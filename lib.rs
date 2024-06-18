@@ -12,6 +12,8 @@
 
 -Como deberia ser el registro de votos? deberia ser un struct aparte? o deberia ser un metodo de la eleccion?
 
+-cuanto tiene que ser el coverage de los tests?
+
 */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
@@ -41,7 +43,7 @@ mod sistema_votacion {
                 id: caller,
                 nombre: String::from("admin"),
                 email: String::from("mail.com"),
-                password: String::from("1234"),
+                password: String::from("admin"),
             };
             let mut elecciones = Vec::new();
             let eleccion = Eleccion {
@@ -95,6 +97,11 @@ mod sistema_votacion {
         /// Funcion para cambiar el estado de una eleccion
         pub fn cambiar_estado_eleccion(&mut self, id: u64) {
             self.elecciones[id as usize].estado = !self.elecciones[id as usize].estado;
+        }
+        #[ink(message)]
+        /// esto lo tengo que borrar despues, es solo para probar que se crean las elecciones
+        pub fn get_elecciones(&self) -> Vec<Eleccion> {
+            self.elecciones.clone()
         }
         //----------------------Funciones de registro---------------------------------------------------------
         #[ink(message)]
@@ -187,9 +194,11 @@ mod sistema_votacion {
         }
 
         //----------------------Funciones de votacion---------------------------------------------------------
-
-        pub fn votar(&mut self) {
+        #[ink(message)]
+        pub fn votar(&mut self, id_eleccion: u64, id_candidato: AccountId) {
             let caller = self.env().caller();
+            // le deberia pasar el AccountId o otra cosa para identificar al candidato? (por ahora le paso el AccountId)
+
             /*Cosas a verificar
             -Que el votante este registrado en la eleccion
             -Que la eleccion este activa
@@ -202,6 +211,7 @@ mod sistema_votacion {
 
             podria hacer una funcion que verifique todas estas cosas y que devuelva un bool y un mensaje de error asi no es tanto quilombo
             */
+            self.elecciones[id_eleccion as usize].votar_eneleccion(id_candidato);
         }
         //----------------------Funciones de conteo y resultados---------------------------------------------------------
         //Hacerlo despues de que termine la eleccion
@@ -210,6 +220,22 @@ mod sistema_votacion {
         }
         pub fn mostrar_resultados() {
             //TODO
+        }
+    }
+    //----------------------Funciones de eleccion---------------------------------------------------------
+    impl Eleccion {
+        fn votar_eneleccion(&mut self, id_candidato: AccountId) {
+            // Verificar que la elección esté activa
+            if !self.estado {
+                panic!("La elección no está activa");
+            }
+
+            // Incrementar el conteo de votos del candidato
+            if let Some(votos) = self.candidatos.get_mut(&id_candidato) {
+                *votos = votos.checked_add(1).expect("Vote count overflow");
+            } else {
+                panic!("El candidato no existe");
+            }
         }
     }
     //----------------------Funciones de verificacion --------------------------------------------------------
@@ -232,7 +258,7 @@ mod sistema_votacion {
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     #[derive(Debug, Clone, PartialEq, Eq)]
-    struct Eleccion {
+    pub struct Eleccion {
         id: u64,
         cargo: String,
         fecha_inicio: u64, // u64 por ser un timestamp
