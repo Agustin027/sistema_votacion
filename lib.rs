@@ -1,10 +1,17 @@
 /*Cosas a consultar
 - use chrono::{TimeZone, Utc}; // cuando quiero usar chrono me revienta todo :(
+
+-lo que yo queria hacer con el chrono era recibir una fecha en formato dd/mm/yyyy y
+  convertirla a timestamp para poder compararla con el timestamp actual y asi saber
+  si la eleccion esta activa o no.
+  Lo que voy a hacer por ahora es pasar la fecha en formato timestamp directamente.
+
 -El votante puede votar en varias elecciones? o solo en una? cuando deberia registrarse en una eleccion? cuando se registra en el sistema? o con una funcion aparte?
+
 -Hay alguna manera mejor de verificar todas las condiciones de los usuarios? (ejemplo: que no se registre el admin como usuario normal) por que lo estoy haciendo con ifs y panics y queda feo
+
 -Como deberia ser el registro de votos? deberia ser un struct aparte? o deberia ser un metodo de la eleccion?
--lo que yo queria hacer con el chrono era recibir una fecha en formato dd/mm/yyyy y convertirla a timestamp para poder compararla con el timestamp actual y asi saber si la eleccion esta activa o no
- lo que voy a hacer por ahora es pasar la fecha en formato timestamp directamente
+
 */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
@@ -181,15 +188,36 @@ mod sistema_votacion {
 
         //----------------------Funciones de votacion---------------------------------------------------------
 
-        pub fn votar() {
-            //TODO
+        pub fn votar(&mut self) {
+            let caller = self.env().caller();
+            /*Cosas a verificar
+            -Que el votante este registrado en la eleccion
+            -Que la eleccion este activa
+            -Que el votante no haya votado ya
+            -Que el candidato exista
+            -Que el votante sea un votante
+            -Que el votante no sea el admin
+            -Que las elecciones no esten cerradas
+            -Que las elecciones esten abiertas
+
+            podria hacer una funcion que verifique todas estas cosas y que devuelva un bool y un mensaje de error asi no es tanto quilombo
+            */
         }
+        //----------------------Funciones de conteo y resultados---------------------------------------------------------
+        //Hacerlo despues de que termine la eleccion
         pub fn contar_votos() {
             //TODO
         }
         pub fn mostrar_resultados() {
             //TODO
         }
+    }
+    //----------------------Funciones de verificacion --------------------------------------------------------
+    pub fn verificar_votante() {
+        //TODO
+    }
+    pub fn verificar_candidato() {
+        //TODO
     }
     //----------------------Structs de admin y eleccion---------------------------------------------------------
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
