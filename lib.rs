@@ -1,21 +1,6 @@
 /*Cosas a consultar
-- use chrono::{TimeZone, Utc}; // cuando quiero usar chrono me revienta todo :(
-
--lo que yo queria hacer con el chrono era recibir una fecha en formato dd/mm/yyyy y
-  convertirla a timestamp para poder compararla con el timestamp actual y asi saber
-  si la eleccion esta activa o no.
-  Lo que voy a hacer por ahora es pasar la fecha en formato timestamp directamente.
-
--El votante puede votar en varias elecciones? o solo en una? cuando deberia registrarse en una eleccion? cuando se registra en el sistema? o con una funcion aparte?
-
--Hay alguna manera mejor de verificar todas las condiciones de los usuarios? (ejemplo: que no se registre el admin como usuario normal) por que lo estoy haciendo con ifs y panics y queda feo
-
--Como deberia ser el registro de votos? deberia ser un struct aparte? o deberia ser un metodo de la eleccion?
-
--cuanto tiene que ser el coverage de los tests?
 
 */
-
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 #[ink::contract]
