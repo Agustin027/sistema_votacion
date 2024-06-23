@@ -1,4 +1,11 @@
+/*To do
+- HACER TESTS
+- hacer la funcion para convertir la fecha a timestamp
+-
+ */
+
 /*Cosas a consultar
+ si ingreso una fecha invalida como hago para que no se cree la eleccion?
 
 */
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
@@ -11,6 +18,7 @@ mod sistema_votacion {
     use ink::prelude::collections::BTreeMap;
     use ink::prelude::string::String;
     use ink::prelude::vec::Vec;
+    use ink_env::caller;
     #[ink(storage)]
     pub struct SistemaVotacion {
         admin: Admin,
@@ -22,7 +30,7 @@ mod sistema_votacion {
         //----------------------Constructor y manejo de eleccion-------------------------------------------------------
         /// Constructor de la estructura SistemaVotacion que inicializa el admin y la primera eleccion del sistema con los datos ingresados
         #[ink(constructor)]
-        pub fn new(cargo: String, fecha_inicio: u64, fecha_fin: u64) -> Self {
+        pub fn new(cargo: String, fecha_ini: Fecha, fecha_f: Fecha) -> Self {
             let caller = Self::env().caller();
             let admin = Admin {
                 id: caller,
@@ -31,6 +39,8 @@ mod sistema_votacion {
                 password: String::from("admin"),
             };
             let mut elecciones = Vec::new();
+            let fecha_inicio = 0; //aca deberia ir la fecha actual pero no me funciono
+            let fecha_fin = 0;
             let eleccion = Eleccion {
                 id: 0,
                 cargo,
@@ -38,6 +48,7 @@ mod sistema_votacion {
                 fecha_fin,
                 candidatos: BTreeMap::new(),
                 votantes: Vec::new(),
+                votantes_que_votaron: Vec::new(),
                 estado: false,
             };
             elecciones.push(eleccion);
@@ -49,6 +60,14 @@ mod sistema_votacion {
             }
         }
 
+        #[ink(message)]
+        pub fn get_fecha_fin(&self, id: u64) -> u64 {
+            self.elecciones[id as usize].fecha_fin
+        }
+        #[ink(message)]
+        pub fn get_fecha_inicio(&self, id: u64) -> u64 {
+            self.elecciones[id as usize].fecha_inicio
+        }
         #[ink(message)]
         /// Funcion para obtener el id del admin
         pub fn get_id_admin(&self) -> AccountId {
@@ -64,9 +83,10 @@ mod sistema_votacion {
                 password,
             };
         }
-        #[ink(message)]
-        /// funcion para crear una nueva eleccion
-        pub fn crear_eleccion(&mut self, cargo: String, fecha_inicio: u64, fecha_fin: u64) {
+
+        fn crear_eleccion_priv(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
+            let fecha_inicio = 0;
+            let fecha_fin = 0;
             let eleccion = Eleccion {
                 id: self.elecciones.len() as u64,
                 cargo,
@@ -74,9 +94,16 @@ mod sistema_votacion {
                 fecha_fin,
                 candidatos: BTreeMap::new(),
                 votantes: Vec::new(),
+                votantes_que_votaron: Vec::new(),
                 estado: false,
             };
             self.elecciones.push(eleccion);
+        }
+
+        #[ink(message)]
+        /// funcion para crear una nueva eleccion
+        pub fn crear_eleccion(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
+            self.crear_eleccion_priv(cargo, fecha_ini, fecha_f);
         }
         #[ink(message)]
         /// Funcion para cambiar el estado de una eleccion
@@ -182,21 +209,30 @@ mod sistema_votacion {
         #[ink(message)]
         pub fn votar(&mut self, id_eleccion: u64, id_candidato: AccountId) {
             let caller = self.env().caller();
-            // le deberia pasar el AccountId o otra cosa para identificar al candidato? (por ahora le paso el AccountId)
+            /*Cosas a verificar---------------------------
+            -Que el votante este registrado en la eleccion ✅
+            -Que la eleccion este activa ✅
+            -Que el votante no haya votado ya ✅
+            -Que el candidato exista ✅
+            -Que el votante sea un votante ✅
+            -Que el votante no sea el admin ✅
+            -Que las elecciones no esten cerradas ❌
+            -Que las elecciones esten abiertas ❌
 
-            /*Cosas a verificar
-            -Que el votante este registrado en la eleccion
-            -Que la eleccion este activa
-            -Que el votante no haya votado ya
-            -Que el candidato exista
-            -Que el votante sea un votante
-            -Que el votante no sea el admin
-            -Que las elecciones no esten cerradas
-            -Que las elecciones esten abiertas
-
-            podria hacer una funcion que verifique todas estas cosas y que devuelva un bool y un mensaje de error asi no es tanto quilombo
+            podria hacer una funcion que verifique todas estas cosas y que devuelva un bool y un mensaje de error asi no es tanto quilombo 👷🏻‍♂️🏗️
             */
-            self.elecciones[id_eleccion as usize].votar_eneleccion(id_candidato);
+            //buscar el votante y retornarlo si no esta registrado lanzar un error
+            let votante = self.usuarios.iter().find(|&u| u.id == caller).cloned();
+            let votante = match votante {
+                Some(u) if u.rol == RolUsuario::Votante => u,
+                _ => panic!("El usuario no es un votante"),
+            };
+
+            if caller == self.admin.id {
+                panic!("El admin no puede votar");
+            }
+
+            self.elecciones[id_eleccion as usize].votar_en_eleccion(id_candidato, votante);
         }
         //----------------------Funciones de conteo y resultados---------------------------------------------------------
         //Hacerlo despues de que termine la eleccion
@@ -209,27 +245,36 @@ mod sistema_votacion {
     }
     //----------------------Funciones de eleccion---------------------------------------------------------
     impl Eleccion {
-        fn votar_eneleccion(&mut self, id_candidato: AccountId) {
-            // Verificar que la elección esté activa
+        fn votar_en_eleccion(&mut self, id_candidato: AccountId, votante: Usuario) {
+            // Verificar que la elección esté activa, esto despues lo voy a hacer con una funcion que verifique todas las cosas
             if !self.estado {
                 panic!("La elección no está activa");
             }
 
             // Incrementar el conteo de votos del candidato
             if let Some(votos) = self.candidatos.get_mut(&id_candidato) {
+                // Verificar que el votante no haya votado ya
+                if self.votantes_que_votaron.contains(&votante) {
+                    panic!("El votante ya ha votado");
+                }
                 *votos = votos.checked_add(1).expect("Vote count overflow");
+                self.votantes_que_votaron.push(votante);
             } else {
                 panic!("El candidato no existe");
             }
         }
     }
     //----------------------Funciones de verificacion --------------------------------------------------------
-    pub fn verificar_votante() {
+    pub fn verificar_fecha(fecha: Fecha) -> bool {
         //TODO
+        true
     }
-    pub fn verificar_candidato() {
-        //TODO
-    }
+    //----------------------Funciones de fecha---------------------------------------------------------
+
+    /* Esto no me funciono 😀😀
+     impl Fecha {
+
+    }*/
     //----------------------Structs de admin y eleccion---------------------------------------------------------
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -250,6 +295,8 @@ mod sistema_votacion {
         fecha_fin: u64,
         candidatos: BTreeMap<AccountId, u64>,
         votantes: Vec<Usuario>,
+        votantes_que_votaron: Vec<Usuario>,
+        //votantes_votaron: BTreeMap<AccountId, bool>, aca pense en almacenar los votantes en un btreemap con el AccountId y un bool que indique si voto o no, pero despues iba a ser un quilombo el reporte
         estado: bool,
     }
 
@@ -283,5 +330,54 @@ mod sistema_votacion {
         nombre: String,
         email: String,
         rol: RolUsuario,
+    }
+
+    //----------------------Structs de fecha---------------------------------------------------------
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Fecha {
+        dias: u32,
+        mes: u32,
+        anio: i32,
+    }
+    //----------------------Tests---------------------------------------------------------
+    #[test]
+    fn test_crear_eleccion() {
+        let mut sistema = SistemaVotacion::new(
+            String::from("cargo"),
+            Fecha {
+                dias: 1,
+                mes: 1,
+                anio: 2021,
+            },
+            Fecha {
+                dias: 1,
+                mes: 1,
+                anio: 2021,
+            },
+        );
+        sistema.crear_eleccion(
+            String::from("cargo"),
+            Fecha {
+                dias: 1,
+                mes: 1,
+                anio: 2021,
+            },
+            Fecha {
+                dias: 1,
+                mes: 1,
+                anio: 2021,
+            },
+        );
+        let elecciones = sistema.get_elecciones();
+        assert_eq!(elecciones.len(), 2);
+        assert_eq!(elecciones[1].cargo, "cargo");
+        assert_eq!(elecciones[1].fecha_inicio, 0);
+        assert_eq!(elecciones[1].fecha_fin, 0);
+        assert_eq!(elecciones[1].candidatos.len(), 0);
+        assert_eq!(elecciones[1].votantes.len(), 0);
+        assert_eq!(elecciones[1].votantes_que_votaron.len(), 0);
+        assert_eq!(elecciones[1].estado, false);
     }
 }
