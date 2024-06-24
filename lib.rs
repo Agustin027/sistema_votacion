@@ -5,8 +5,7 @@
  */
 
 /*Cosas a consultar
- si ingreso una fecha invalida como hago para que no se cree la eleccion?
-
+ si ingreso una fecha invalida como hago para que no se cree la eleccion? y si el admin pone una fecha invalida al crear el sistema?
 */
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
@@ -27,6 +26,7 @@ mod sistema_votacion {
 
     impl SistemaVotacion {
         //----------------------Constructor y manejo de eleccion-------------------------------------------------------
+
         /// Constructor de la estructura SistemaVotacion que inicializa el admin y la primera eleccion del sistema con los datos ingresados
         #[ink(constructor)]
         pub fn new(cargo: String, fecha_ini: Fecha, fecha_f: Fecha) -> Self {
@@ -62,29 +62,10 @@ mod sistema_votacion {
                 usuarios,
             }
         }
-
         #[ink(message)]
-        pub fn get_fecha_fin(&self, id: u64) -> u64 {
-            self.elecciones[id as usize].fecha_fin
-        }
-        #[ink(message)]
-        pub fn get_fecha_inicio(&self, id: u64) -> u64 {
-            self.elecciones[id as usize].fecha_inicio
-        }
-        #[ink(message)]
-        /// Funcion para obtener el id del admin
-        pub fn get_id_admin(&self) -> AccountId {
-            self.admin.id
-        }
-        #[ink(message)]
-        /// Funcion para settear un nuevo admin
-        pub fn set_admin(&mut self, nombre: String, email: String, password: String) {
-            self.admin = Admin {
-                id: self.env().caller(),
-                nombre,
-                email,
-                password,
-            };
+        /// funcion para crear una nueva eleccion
+        pub fn crear_eleccion(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
+            self.crear_eleccion_priv(cargo, fecha_ini, fecha_f);
         }
 
         fn crear_eleccion_priv(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
@@ -104,21 +85,86 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// funcion para crear una nueva eleccion
-        pub fn crear_eleccion(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
-            self.crear_eleccion_priv(cargo, fecha_ini, fecha_f);
+        pub fn get_fecha_fin(&self, id: u64) -> u64 {
+            SistemaVotacion::get_fecha_fin_priv(self, id)
         }
+
+        fn get_fecha_fin_priv(&self, id: u64) -> u64 {
+            self.elecciones[id as usize].fecha_fin
+        }
+
+        #[ink(message)]
+        pub fn get_fecha_inicio(&self, id: u64) -> u64 {
+            SistemaVotacion::get_fecha_inicio_priv(self, id)
+        }
+
+        fn get_fecha_inicio_priv(&self, id: u64) -> u64 {
+            //////////////////////
+            self.elecciones[id as usize].fecha_inicio
+        }
+
+        #[ink(message)]
+        /// Funcion para obtener el id del admin
+        pub fn get_id_admin(&self) -> AccountId {
+            SistemaVotacion::get_id_admin_priv(&self)
+        }
+
+        fn get_id_admin_priv(&self) -> AccountId {
+            ///////////////////
+            self.admin.id
+        }
+
+        #[ink(message)]
+        /// Funcion para settear un nuevo admin
+        pub fn set_admin(
+            &mut self,
+            nombre: String,
+            email: String,
+            password: String,
+            nuevo_admin: AccountId,
+        ) {
+            SistemaVotacion::set_admin_priv(self, nombre, email, password, nuevo_admin)
+        }
+
+        fn set_admin_priv(
+            &mut self,
+            nombre: String,
+            email: String,
+            password: String,
+            nuevo_admin: AccountId,
+        ) {
+            let caller = self.env().caller();
+            if caller != self.admin.id {
+                panic!("No tiene permisos para realizar esta accion");
+            }
+            self.admin = Admin {
+                id: nuevo_admin,
+                nombre,
+                email,
+                password,
+            };
+        }
+
         #[ink(message)]
         /// Funcion para cambiar el estado de una eleccion
         pub fn cambiar_estado_eleccion(&mut self, id: u64) {
             self.elecciones[id as usize].estado = !self.elecciones[id as usize].estado;
         }
+
         #[ink(message)]
         /// esto lo tengo que borrar despues, es solo para probar que se crean las elecciones
         pub fn get_elecciones(&self) -> Vec<Eleccion> {
             self.elecciones.clone()
         }
+
         //----------------------Funciones de registro---------------------------------------------------------
+
+        #[ink(message)]
+        /// Funcion para registrar un usuario en el sistema con los datos ingresados,distingue entre votante y candidato y verifica que no se registre el admin como usuario normal
+        pub fn registrar_usuario(&mut self, nombre: String, email: String, rol: RolUsuario) {
+            self.registrar_usuario_priv(nombre, email, rol);
+        }
+
         fn registrar_usuario_priv(&mut self, nombre: String, email: String, rol: RolUsuario) {
             let usuario = Usuario {
                 id: self.env().caller(),
@@ -136,15 +182,12 @@ mod sistema_votacion {
                 self.usuarios.push(usuario);
             }
         }
-
-        #[ink(message)]
-        /// Funcion para registrar un usuario en el sistema con los datos ingresados,distingue entre votante y candidato y verifica que no se registre el admin como usuario normal
-        pub fn registrar_usuario(&mut self, nombre: String, email: String, rol: RolUsuario) {
-            self.registrar_usuario_priv(nombre, email, rol);
-        }
         #[ink(message)]
         /// Funcion para registrar un votante en una eleccion
         pub fn registrar_votante_en_eleccion(&mut self, id_eleccion: u64) {
+            self.registrar_votante_en_eleccion_priv(id_eleccion);
+        }
+        pub fn registrar_votante_en_eleccion_priv(&mut self, id_eleccion: u64) {
             let caller = self.env().caller();
 
             // Verificar que la elección exista
@@ -177,6 +220,9 @@ mod sistema_votacion {
         #[ink(message)]
         /// Funcion para registrar un candidato en una eleccion
         pub fn registrar_candidato_en_eleccion(&mut self, id_eleccion: u64) {
+            self.registrar_candidato_en_eleccion_priv(id_eleccion);
+        }
+        fn registrar_candidato_en_eleccion_priv(&mut self, id_eleccion: u64) {
             let caller = self.env().caller();
 
             // Verificar que la elección exista
@@ -215,20 +261,11 @@ mod sistema_votacion {
         //----------------------Funciones de votacion---------------------------------------------------------
         #[ink(message)]
         pub fn votar(&mut self, id_eleccion: u64, id_candidato: AccountId) {
+            self.votar_priv(id_eleccion, id_candidato);
+        }
+        fn votar_priv(&mut self, id_eleccion: u64, id_candidato: AccountId) {
             let caller = self.env().caller();
-            /*Cosas a verificar---------------------------
-            -Que el votante este registrado en la eleccion ✅
-            -Que la eleccion este activa ✅
-            -Que el votante no haya votado ya ✅
-            -Que el candidato exista ✅
-            -Que el votante sea un votante ✅
-            -Que el votante no sea el admin ✅
-            -Que las elecciones no esten cerradas ❌
-            -Que las elecciones esten abiertas ❌
 
-            podria hacer una funcion que verifique todas estas cosas y que devuelva un bool y un mensaje de error asi no es tanto quilombo 👷🏻‍♂️🏗️
-            */
-            //buscar el votante y retornarlo si no esta registrado lanzar un error
             let votante = self.usuarios.iter().find(|&u| u.id == caller).cloned();
             let votante = match votante {
                 Some(u) if u.rol == RolUsuario::Votante => u,
@@ -406,9 +443,19 @@ mod sistema_votacion {
                     anio: 2021,
                 },
             );
+            assert_eq!(sistema.get_id_admin(), caller);
+            //cambio de alice a bob
+            sistema.set_admin(
+                "Agustin".to_string(),
+                "Mail".to_string(),
+                "*****".to_string(),
+                accounts.bob,
+            );
             let elecciones = sistema.get_elecciones();
             assert_eq!(elecciones.len(), 2);
+            assert_eq!(sistema.get_id_admin(), accounts.bob);
         }
+
         #[ink::test]
         fn test_registrar_usuario() {
             let accounts = env::test::default_accounts::<ink_env::DefaultEnvironment>();
@@ -438,5 +485,69 @@ mod sistema_votacion {
             let usuarios = sistema.usuarios;
             assert_eq!(usuarios.len(), 1);
         }
+        #[ink::test]
+        fn registrar_candidato() {
+            let accounts = env::test::default_accounts::<ink_env::DefaultEnvironment>();
+            let mut caller = accounts.alice;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+
+            let mut sistema = SistemaVotacion::new(
+                String::from("cargo"),
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2024,
+                },
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2024,
+                },
+            );
+            caller = accounts.bob;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+            sistema.registrar_usuario(
+                String::from("nombre"),
+                String::from("mail"),
+                RolUsuario::Candidato,
+            );
+
+            sistema.registrar_candidato_en_eleccion(0);
+            assert_eq!(sistema.usuarios.len(), 1);
+            assert_eq!(sistema.elecciones[0].candidatos.len(), 1);
+        }
+        #[ink::test]
+        fn registrar_votante() {
+            let accounts = env::test::default_accounts::<ink_env::DefaultEnvironment>();
+            let mut caller = accounts.alice;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+
+            let mut sistema = SistemaVotacion::new(
+                String::from("cargo"),
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2024,
+                },
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2024,
+                },
+            );
+            caller = accounts.bob;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+            sistema.registrar_usuario(
+                String::from("nombre"),
+                String::from("mail"),
+                RolUsuario::Votante,
+            );
+
+            sistema.registrar_votante_en_eleccion(0);
+            assert_eq!(sistema.usuarios.len(), 1);
+            assert_eq!(sistema.elecciones[0].votantes.len(), 1);
+        }
+        #[ink::test]
+        fn votar() {}
     }
 }
