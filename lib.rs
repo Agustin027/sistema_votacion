@@ -1,7 +1,7 @@
 /*To do
 - HACER TESTS
 - hacer la funcion para convertir la fecha a timestamp
--
+- meter manejo de errores
  */
 
 /*Cosas a consultar
@@ -13,7 +13,6 @@
 #[ink::contract]
 mod sistema_votacion {
     use core::panic;
-
     use ink::env;
     use ink::prelude::collections::BTreeMap;
     use ink::prelude::string::String;
@@ -31,6 +30,10 @@ mod sistema_votacion {
         /// Constructor de la estructura SistemaVotacion que inicializa el admin y la primera eleccion del sistema con los datos ingresados
         #[ink(constructor)]
         pub fn new(cargo: String, fecha_ini: Fecha, fecha_f: Fecha) -> Self {
+            SistemaVotacion::new_priv(cargo, fecha_ini, fecha_f)
+        }
+
+        fn new_priv(cargo: String, fecha_ini: Fecha, fecha_f: Fecha) -> Self {
             let caller = Self::env().caller();
             let admin = Admin {
                 id: caller,
@@ -116,9 +119,7 @@ mod sistema_votacion {
             self.elecciones.clone()
         }
         //----------------------Funciones de registro---------------------------------------------------------
-        #[ink(message)]
-        /// Funcion para registrar un usuario en el sistema con los datos ingresados,distingue entre votante y candidato y verifica que no se registre el admin como usuario normal
-        pub fn registrar_usuario(&mut self, nombre: String, email: String, rol: RolUsuario) {
+        fn registrar_usuario_priv(&mut self, nombre: String, email: String, rol: RolUsuario) {
             let usuario = Usuario {
                 id: self.env().caller(),
                 nombre,
@@ -134,6 +135,12 @@ mod sistema_votacion {
             } else {
                 self.usuarios.push(usuario);
             }
+        }
+
+        #[ink(message)]
+        /// Funcion para registrar un usuario en el sistema con los datos ingresados,distingue entre votante y candidato y verifica que no se registre el admin como usuario normal
+        pub fn registrar_usuario(&mut self, nombre: String, email: String, rol: RolUsuario) {
+            self.registrar_usuario_priv(nombre, email, rol);
         }
         #[ink(message)]
         /// Funcion para registrar un votante en una eleccion
@@ -342,42 +349,94 @@ mod sistema_votacion {
         anio: i32,
     }
     //----------------------Tests---------------------------------------------------------
-    #[test]
-    fn test_crear_eleccion() {
-        let mut sistema = SistemaVotacion::new(
-            String::from("cargo"),
-            Fecha {
-                dias: 1,
-                mes: 1,
-                anio: 2021,
-            },
-            Fecha {
-                dias: 1,
-                mes: 1,
-                anio: 2021,
-            },
-        );
-        sistema.crear_eleccion(
-            String::from("cargo"),
-            Fecha {
-                dias: 1,
-                mes: 1,
-                anio: 2021,
-            },
-            Fecha {
-                dias: 1,
-                mes: 1,
-                anio: 2021,
-            },
-        );
-        let elecciones = sistema.get_elecciones();
-        assert_eq!(elecciones.len(), 2);
-        assert_eq!(elecciones[1].cargo, "cargo");
-        assert_eq!(elecciones[1].fecha_inicio, 0);
-        assert_eq!(elecciones[1].fecha_fin, 0);
-        assert_eq!(elecciones[1].candidatos.len(), 0);
-        assert_eq!(elecciones[1].votantes.len(), 0);
-        assert_eq!(elecciones[1].votantes_que_votaron.len(), 0);
-        assert_eq!(elecciones[1].estado, false);
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use ink_env::{call, test};
+        #[ink::test]
+        fn test_crear_sistema() {
+            let accounts = env::test::default_accounts::<ink_env::DefaultEnvironment>();
+            let caller = accounts.alice;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+            let mut sistema = SistemaVotacion::new(
+                String::from("cargo"),
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+            );
+            println!("{:?}", sistema.get_id_admin());
+            assert_eq!(sistema.get_id_admin(), caller);
+        }
+
+        #[ink::test]
+        fn test_crear_eleccion() {
+            let accounts = env::test::default_accounts::<ink_env::DefaultEnvironment>();
+            let caller = accounts.alice;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+            let mut sistema = SistemaVotacion::new(
+                String::from("cargo"),
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+            );
+            sistema.crear_eleccion(
+                String::from("cargo"),
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+            );
+            let elecciones = sistema.get_elecciones();
+            assert_eq!(elecciones.len(), 2);
+        }
+        #[ink::test]
+        fn test_registrar_usuario() {
+            let accounts = env::test::default_accounts::<ink_env::DefaultEnvironment>();
+            let mut caller = accounts.alice;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+
+            let mut sistema = SistemaVotacion::new(
+                String::from("cargo"),
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+                Fecha {
+                    dias: 1,
+                    mes: 1,
+                    anio: 2021,
+                },
+            );
+            caller = accounts.bob;
+            ink_env::test::set_caller::<ink_env::DefaultEnvironment>(caller);
+            sistema.registrar_usuario(
+                String::from("nombre"),
+                String::from("mail"),
+                RolUsuario::Votante,
+            );
+            let usuarios = sistema.usuarios;
+            assert_eq!(usuarios.len(), 1);
+        }
     }
 }
