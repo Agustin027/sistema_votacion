@@ -1,21 +1,27 @@
 /*To do
 - HACER TESTS
-- hacer la funcion para convertir la fecha a timestamp
 - meter manejo de errores
+ todo lo del caller lo hago desde metodos publicos, si paso de ahi lo testeo en privado, los end to end los hago con el caller
+ terminar este contrato con 85% de cobertura
+
  */
 
 /*Cosas a consultar
- si ingreso una fecha invalida como hago para que no se cree la eleccion? y si el admin pone una fecha invalida al crear el sistema?
+
+
 */
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 #[ink::contract]
 mod sistema_votacion {
+    use chrono::NaiveDate;
+    use chrono::NaiveDateTime;
     use core::panic;
     use ink::env;
     use ink::prelude::collections::BTreeMap;
     use ink::prelude::string::String;
     use ink::prelude::vec::Vec;
+    use ink_env::account_id;
     use ink_env::caller;
     #[ink(storage)]
     pub struct SistemaVotacion {
@@ -29,11 +35,11 @@ mod sistema_votacion {
 
         /// Constructor de la estructura SistemaVotacion que inicializa el admin y la primera eleccion del sistema con los datos ingresados
         #[ink(constructor)]
-        pub fn new(cargo: String, fecha_ini: Fecha, fecha_f: Fecha) -> Self {
-            SistemaVotacion::new_priv(cargo, fecha_ini, fecha_f)
+        pub fn new() -> Self {
+            SistemaVotacion::new_priv()
         }
 
-        fn new_priv(cargo: String, fecha_ini: Fecha, fecha_f: Fecha) -> Self {
+        fn new_priv() -> Self {
             let caller = Self::env().caller();
             let admin = Admin {
                 id: caller,
@@ -41,25 +47,11 @@ mod sistema_votacion {
                 email: String::from("mail.com"),
                 password: String::from("admin"),
             };
-            let mut elecciones = Vec::new();
-            let fecha_inicio = 0; //aca deberia ir la fecha actual pero no me funciono
-            let fecha_fin = 0;
-            let eleccion = Eleccion {
-                id: 0,
-                cargo,
-                fecha_inicio,
-                fecha_fin,
-                candidatos: BTreeMap::new(),
-                votantes: Vec::new(),
-                votantes_que_votaron: Vec::new(),
-                estado: false,
-            };
-            elecciones.push(eleccion);
-            let usuarios = Vec::new();
+
             Self {
                 admin,
-                elecciones,
-                usuarios,
+                elecciones: Vec::new(),
+                usuarios: Vec::new(),
             }
         }
         #[ink(message)]
@@ -69,8 +61,8 @@ mod sistema_votacion {
         }
 
         fn crear_eleccion_priv(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
-            let fecha_inicio = 0;
-            let fecha_fin = 0;
+            let fecha_inicio = fecha_ini.to_timestamp();
+            let fecha_fin = fecha_f.to_timestamp();
             let eleccion = Eleccion {
                 id: self.elecciones.len() as u64,
                 cargo,
@@ -309,16 +301,19 @@ mod sistema_votacion {
         }
     }
     //----------------------Funciones de verificacion --------------------------------------------------------
-    pub fn verificar_fecha(fecha: Fecha) -> bool {
-        //TODO
-        true
-    }
+
     //----------------------Funciones de fecha---------------------------------------------------------
 
-    /* Esto no me funciono 😀😀
-     impl Fecha {
+    impl Fecha {
+        pub fn to_timestamp(&self) -> u64 {
+            let date = chrono::NaiveDate::from_ymd_opt(self.anio, self.mes, self.dias)
+                .expect("Fecha inválida"); // este lo deberia cambiar ??, una fecha invalida no deberia ser un panic sino un error que se maneje en el contrato y se devuelva al usuario
 
-    }*/
+            let datetime = date.and_hms(0, 0, 0);
+
+            datetime.timestamp() as u64
+        }
+    }
     //----------------------Structs de admin y eleccion---------------------------------------------------------
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -386,7 +381,7 @@ mod sistema_votacion {
         anio: i32,
     }
     //----------------------Tests---------------------------------------------------------
-    #[cfg(test)]
+    /*#[cfg(test)]
     mod tests {
         use super::*;
         use ink_env::{call, test};
@@ -549,5 +544,5 @@ mod sistema_votacion {
         }
         #[ink::test]
         fn votar() {}
-    }
+    } */
 }

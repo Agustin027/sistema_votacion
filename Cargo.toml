@@ -5,6 +5,7 @@ authors = ["[Agustin Castillo] <[Agustincasti2002@gmail.com]>"]
 edition = "2021"
 
 [dependencies]
+chrono = { version = "0.4.38", default-features = false }
 ink = { version = "5.0.0", default-features = false }
 ink_env = { version = "5.0.0", default-features = false }
 scale = { package = "parity-scale-codec", version = "3.6.12", default-features = false }
