@@ -1,21 +1,21 @@
 /*To do
 - HACER TESTS
-- meter manejo de errores
- todo lo del caller lo hago desde metodos publicos, si paso de ahi lo testeo en privado, los end to end los hago con el caller
- terminar este contrato con 85% de cobertura
 
  */
 
 /*Cosas a consultar
-
+No se si mi funcion de votar esta bien recibiendo el accounid del candidato,
+por que no salen los candidatos en la lista de elecciones, solo salen las wallets propias.
 
 */
+
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 #[ink::contract]
 mod sistema_votacion {
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
+    use core::fmt;
     use core::panic;
     use ink::env;
     use ink::prelude::collections::BTreeMap;
@@ -60,9 +60,17 @@ mod sistema_votacion {
             self.crear_eleccion_priv(cargo, fecha_ini, fecha_f);
         }
 
-        fn crear_eleccion_priv(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
-            let fecha_inicio = fecha_ini.to_timestamp();
-            let fecha_fin = fecha_f.to_timestamp();
+        fn crear_eleccion_priv(
+            &mut self,
+            cargo: String,
+            fecha_ini: Fecha,
+            fecha_f: Fecha,
+        ) -> Result<(), Error> {
+            if self.admin.id != self.env().caller() {
+                return Err(Error::PermisoDenegado);
+            }
+            let fecha_inicio = fecha_ini.to_timestamp()?;
+            let fecha_fin = fecha_f.to_timestamp()?;
             let eleccion = Eleccion {
                 id: self.elecciones.len() as u64,
                 cargo,
@@ -71,28 +79,9 @@ mod sistema_votacion {
                 candidatos: BTreeMap::new(),
                 votantes: Vec::new(),
                 votantes_que_votaron: Vec::new(),
-                estado: false,
             };
             self.elecciones.push(eleccion);
-        }
-
-        #[ink(message)]
-        pub fn get_fecha_fin(&self, id: u64) -> u64 {
-            SistemaVotacion::get_fecha_fin_priv(self, id)
-        }
-
-        fn get_fecha_fin_priv(&self, id: u64) -> u64 {
-            self.elecciones[id as usize].fecha_fin
-        }
-
-        #[ink(message)]
-        pub fn get_fecha_inicio(&self, id: u64) -> u64 {
-            SistemaVotacion::get_fecha_inicio_priv(self, id)
-        }
-
-        fn get_fecha_inicio_priv(&self, id: u64) -> u64 {
-            //////////////////////
-            self.elecciones[id as usize].fecha_inicio
+            Ok(())
         }
 
         #[ink(message)]
@@ -115,7 +104,7 @@ mod sistema_votacion {
             password: String,
             nuevo_admin: AccountId,
         ) {
-            SistemaVotacion::set_admin_priv(self, nombre, email, password, nuevo_admin)
+            self.set_admin_priv(nombre, email, password, nuevo_admin);
         }
 
         fn set_admin_priv(
@@ -124,10 +113,10 @@ mod sistema_votacion {
             email: String,
             password: String,
             nuevo_admin: AccountId,
-        ) {
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
             if caller != self.admin.id {
-                panic!("No tiene permisos para realizar esta accion");
+                return Err(Error::PermisoDenegado);
             }
             self.admin = Admin {
                 id: nuevo_admin,
@@ -135,18 +124,82 @@ mod sistema_votacion {
                 email,
                 password,
             };
+            Ok(())
+        }
+
+        fn eleccion_activa(&self, id: u64) -> Result<bool, Error> {
+            let fecha_actual = self.env().block_timestamp();
+
+            if id as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            let fecha_inicio = self.elecciones[id as usize].fecha_inicio;
+            let fecha_fin = self.elecciones[id as usize].fecha_fin;
+
+            Ok(fecha_actual >= fecha_inicio && fecha_actual <= fecha_fin)
+        }
+
+        fn eleccion_cerrada(&self, id: u64) -> Result<bool, Error> {
+            let fecha_actual = self.env().block_timestamp();
+            if id as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            let fecha_fin = self.elecciones[id as usize].fecha_fin;
+
+            Ok(fecha_actual > fecha_fin)
+        }
+
+        fn eleccion_no_abierta(&self, id: u64) -> Result<bool, Error> {
+            let fecha_actual = self.env().block_timestamp();
+            if id as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            let fecha_inicio = self.elecciones[id as usize].fecha_inicio;
+
+            Ok(fecha_actual < fecha_inicio)
         }
 
         #[ink(message)]
-        /// Funcion para cambiar el estado de una eleccion
-        pub fn cambiar_estado_eleccion(&mut self, id: u64) {
-            self.elecciones[id as usize].estado = !self.elecciones[id as usize].estado;
+        pub fn mostrar_validaciones_fecha(&self, id: u64) -> Result<(bool, bool, bool), Error> {
+            Ok((
+                self.eleccion_activa(id)?,
+                self.eleccion_cerrada(id)?,
+                self.eleccion_no_abierta(id)?,
+            ))
+        }
+
+        #[ink(message)]
+        pub fn mostrar_fechas(&self, id: u64) -> (u64, u64, u64) {
+            (
+                self.elecciones[id as usize].fecha_inicio,
+                self.elecciones[id as usize].fecha_fin,
+                self.env().block_timestamp(),
+            )
         }
 
         #[ink(message)]
         /// esto lo tengo que borrar despues, es solo para probar que se crean las elecciones
         pub fn get_elecciones(&self) -> Vec<Eleccion> {
             self.elecciones.clone()
+        }
+
+        //esto es para probar que funcionan las funciones de verificacion de fecha
+        #[ink(message)]
+        pub fn cambiar_fechas_eleccion(
+            &mut self,
+            id: u64,
+            fecha_ini: Fecha,
+            fecha_f: Fecha,
+        ) -> Result<(), Error> {
+            if self.admin.id != self.env().caller() {
+                return Err(Error::PermisoDenegado);
+            }
+            self.elecciones[id as usize].fecha_inicio = fecha_ini.to_timestamp()?;
+            self.elecciones[id as usize].fecha_fin = fecha_f.to_timestamp()?;
+            Ok(())
         }
 
         //----------------------Funciones de registro---------------------------------------------------------
@@ -157,7 +210,12 @@ mod sistema_votacion {
             self.registrar_usuario_priv(nombre, email, rol);
         }
 
-        fn registrar_usuario_priv(&mut self, nombre: String, email: String, rol: RolUsuario) {
+        fn registrar_usuario_priv(
+            &mut self,
+            nombre: String,
+            email: String,
+            rol: RolUsuario,
+        ) -> Result<(), Error> {
             let usuario = Usuario {
                 id: self.env().caller(),
                 nombre,
@@ -166,25 +224,32 @@ mod sistema_votacion {
             };
             if self.usuarios.iter().any(|u| u.id == usuario.id) || usuario.id == self.admin.id {
                 if usuario.id == self.admin.id {
-                    panic!("El admin no puede registrarse como un usuario normal");
+                    return Err(Error::AdminNoPuedeRegistrarse);
                 } else {
-                    panic!("El usuario ya está registrado");
+                    return Err(Error::UsuarioYaRegistrado);
                 }
-            } else {
-                self.usuarios.push(usuario);
             }
+            self.usuarios.push(usuario);
+            Ok(())
         }
         #[ink(message)]
         /// Funcion para registrar un votante en una eleccion
         pub fn registrar_votante_en_eleccion(&mut self, id_eleccion: u64) {
             self.registrar_votante_en_eleccion_priv(id_eleccion);
         }
-        pub fn registrar_votante_en_eleccion_priv(&mut self, id_eleccion: u64) {
+        pub fn registrar_votante_en_eleccion_priv(
+            &mut self,
+            id_eleccion: u64,
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
+
+            if !self.eleccion_no_abierta(id_eleccion)? {
+                return Err(Error::EleccionAbierta);
+            }
 
             // Verificar que la elección exista
             if id_eleccion as usize >= self.elecciones.len() {
-                panic!("La eleccion no existe");
+                return Err(Error::EleccionNoExiste);
             }
 
             // Obtener el usuario completo del vector de usuarios
@@ -193,7 +258,7 @@ mod sistema_votacion {
             // Verificar que el usuario exista y sea un votante
             let usuario = match usuario {
                 Some(u) if u.rol == RolUsuario::Votante => u,
-                _ => panic!("El usuario no es un votante"),
+                _ => return Err(Error::UsuarioNoVotante),
             };
 
             // Verificar que el usuario no esté registrado como votante en la elección
@@ -202,11 +267,12 @@ mod sistema_votacion {
                 .iter()
                 .any(|v| v.id == usuario.id)
             {
-                panic!("El usuario ya está registrado como votante en esta elección");
+                return Err(Error::UsuarioYaRegistrado);
             }
 
             // Registrar al usuario completo como votante en la elección
             self.elecciones[id_eleccion as usize].votantes.push(usuario);
+            Ok(())
         }
 
         #[ink(message)]
@@ -214,12 +280,16 @@ mod sistema_votacion {
         pub fn registrar_candidato_en_eleccion(&mut self, id_eleccion: u64) {
             self.registrar_candidato_en_eleccion_priv(id_eleccion);
         }
-        fn registrar_candidato_en_eleccion_priv(&mut self, id_eleccion: u64) {
+        fn registrar_candidato_en_eleccion_priv(&mut self, id_eleccion: u64) -> Result<(), Error> {
             let caller = self.env().caller();
+
+            if !self.eleccion_no_abierta(id_eleccion)? {
+                return Err(Error::EleccionAbierta);
+            }
 
             // Verificar que la elección exista
             if id_eleccion as usize >= self.elecciones.len() {
-                panic!("La eleccion no existe");
+                return Err(Error::EleccionNoExiste);
             }
 
             // Verificar que el usuario actual sea un candidato
@@ -233,7 +303,7 @@ mod sistema_votacion {
 
             // Si el usuario no es un candidato, lanzar un error
             if !usuario_es_candidato {
-                panic!("El usuario no es un candidato");
+                return Err(Error::UsuarioNoCandidato);
             }
 
             // Verificar que el usuario no esté registrado como candidato en la elección
@@ -241,13 +311,14 @@ mod sistema_votacion {
                 .candidatos
                 .contains_key(&caller)
             {
-                panic!("El usuario ya está registrado como candidato en esta elección");
+                return Err(Error::UsuarioYaRegistrado);
             }
 
             // Registrar al usuario como candidato en la elección
             self.elecciones[id_eleccion as usize]
                 .candidatos
                 .insert(caller, 0);
+            Ok(())
         }
 
         //----------------------Funciones de votacion---------------------------------------------------------
@@ -255,49 +326,86 @@ mod sistema_votacion {
         pub fn votar(&mut self, id_eleccion: u64, id_candidato: AccountId) {
             self.votar_priv(id_eleccion, id_candidato);
         }
-        fn votar_priv(&mut self, id_eleccion: u64, id_candidato: AccountId) {
+        fn votar_priv(&mut self, id_eleccion: u64, id_candidato: AccountId) -> Result<(), Error> {
             let caller = self.env().caller();
+
+            if !self.eleccion_activa(id_eleccion)? {
+                return Err(Error::EleccionNoActiva);
+            }
 
             let votante = self.usuarios.iter().find(|&u| u.id == caller).cloned();
             let votante = match votante {
                 Some(u) if u.rol == RolUsuario::Votante => u,
-                _ => panic!("El usuario no es un votante"),
+                _ => return Err(Error::UsuarioNoVotante),
             };
 
             if caller == self.admin.id {
-                panic!("El admin no puede votar");
+                return Err(Error::AdminNoPuedeVotar);
             }
 
             self.elecciones[id_eleccion as usize].votar_en_eleccion(id_candidato, votante);
+            Ok(())
         }
         //----------------------Funciones de conteo y resultados---------------------------------------------------------
-        //Hacerlo despues de que termine la eleccion
-        pub fn contar_votos() {
-            //TODO
+        fn contar_votos(&self, id_eleccion: u64) -> Result<u64, Error> {
+            if !self.eleccion_cerrada(id_eleccion)? {
+                return Err(Error::EleccionAbierta);
+            }
+
+            let mut votos_totales: u64 = 0;
+            for (_, votos) in self
+                .elecciones
+                .get(id_eleccion as usize)
+                .ok_or(Error::EleccionNoExiste)?
+                .candidatos
+                .iter()
+            {
+                votos_totales = votos_totales.checked_add(*votos).ok_or(Error::Overflow)?;
+            }
+            Ok(votos_totales)
         }
-        pub fn mostrar_resultados() {
-            //TODO
+        #[ink(message)]
+        /// Funcion para mostrar los resultados de una eleccion
+        pub fn mostrar_resultados(
+            &self,
+            id_eleccion: u64,
+        ) -> Result<BTreeMap<AccountId, u64>, Error> {
+            if !self.eleccion_cerrada(id_eleccion)? {
+                return Err(Error::EleccionAbierta);
+            }
+
+            let resultados = self
+                .elecciones
+                .get(id_eleccion as usize)
+                .ok_or(Error::EleccionNoExiste)?
+                .candidatos
+                .clone();
+            Ok(resultados)
         }
     }
     //----------------------Funciones de eleccion---------------------------------------------------------
     impl Eleccion {
-        fn votar_en_eleccion(&mut self, id_candidato: AccountId, votante: Usuario) {
-            // Verificar que la elección esté activa, esto despues lo voy a hacer con una funcion que verifique todas las cosas
-            if !self.estado {
-                panic!("La elección no está activa");
-            }
-
+        fn votar_en_eleccion(
+            &mut self,
+            id_candidato: AccountId,
+            votante: Usuario,
+        ) -> Result<(), Error> {
             // Incrementar el conteo de votos del candidato
             if let Some(votos) = self.candidatos.get_mut(&id_candidato) {
                 // Verificar que el votante no haya votado ya
-                if self.votantes_que_votaron.contains(&votante) {
+                /*  esto lo tengo comentado por que quiero testear el sistema y alta paja crear muchas wallets para hacerlo CAMBIAR!!!!!!
+                    if self.votantes_que_votaron.contains(&votante) {
                     panic!("El votante ya ha votado");
-                }
-                *votos = votos.checked_add(1).expect("Vote count overflow");
+                }*/
+
+                // Intentar incrementar el conteo de votos, manejando el posible overflow
+                *votos = votos.checked_add(1).ok_or(Error::Overflow)?;
+
                 self.votantes_que_votaron.push(votante);
             } else {
-                panic!("El candidato no existe");
+                return Err(Error::CandidatoNoExiste);
             }
+            Ok(())
         }
     }
     //----------------------Funciones de verificacion --------------------------------------------------------
@@ -305,13 +413,17 @@ mod sistema_votacion {
     //----------------------Funciones de fecha---------------------------------------------------------
 
     impl Fecha {
-        pub fn to_timestamp(&self) -> u64 {
-            let date = chrono::NaiveDate::from_ymd_opt(self.anio, self.mes, self.dias)
-                .expect("Fecha inválida"); // este lo deberia cambiar ??, una fecha invalida no deberia ser un panic sino un error que se maneje en el contrato y se devuelva al usuario
+        pub fn to_timestamp(&self) -> Result<u64, Error> {
+            let date = NaiveDate::from_ymd_opt(self.anio, self.mes, self.dias)
+                .ok_or(Error::FechaInvalida)?; // Manejo del error para una fecha inválida
 
+            // Arranca a las 00:00:00 del día
             let datetime = date.and_hms(0, 0, 0);
 
-            datetime.timestamp() as u64
+            let timestamp_secs = datetime.timestamp() as u64;
+
+            // Pasar a milisegundos, manejando posible overflow
+            timestamp_secs.checked_mul(1000).ok_or(Error::Overflow)
         }
     }
     //----------------------Structs de admin y eleccion---------------------------------------------------------
@@ -330,28 +442,14 @@ mod sistema_votacion {
     pub struct Eleccion {
         id: u64,
         cargo: String,
-        fecha_inicio: u64, // u64 por ser un timestamp
+        fecha_inicio: u64,
         fecha_fin: u64,
         candidatos: BTreeMap<AccountId, u64>,
         votantes: Vec<Usuario>,
         votantes_que_votaron: Vec<Usuario>,
-        //votantes_votaron: BTreeMap<AccountId, bool>, aca pense en almacenar los votantes en un btreemap con el AccountId y un bool que indique si voto o no, pero despues iba a ser un quilombo el reporte
-        estado: bool,
     }
 
     //----------------------Structs de usuarios---------------------------------------------------------
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct Candidato {
-        afiliacion: String,
-    }
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct Votante {
-        nose: String,
-    }
 
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -380,7 +478,44 @@ mod sistema_votacion {
         mes: u32,
         anio: i32,
     }
-    //----------------------Tests---------------------------------------------------------
+    //----------------------Tests y errores---------------------------------------------------------
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum Error {
+        PermisoDenegado,
+        EleccionNoExiste,
+        EleccionAbierta,
+        EleccionNoActiva,
+        UsuarioNoVotante,
+        UsuarioYaRegistrado,
+        AdminNoPuedeRegistrarse,
+        AdminNoPuedeVotar,
+        CandidatoNoExiste,
+        UsuarioNoCandidato,
+        FechaInvalida,
+        Overflow,
+    }
+
+    impl core::fmt::Display for Error {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            match *self {
+                Error::PermisoDenegado => write!(f, "Permiso denegado"),
+                Error::EleccionNoExiste => write!(f, "La elección no existe"),
+                Error::EleccionAbierta => write!(f, "La elección está abierta"),
+                Error::EleccionNoActiva => write!(f, "La elección no está activa"),
+                Error::UsuarioNoVotante => write!(f, "El usuario no es votante"),
+                Error::UsuarioYaRegistrado => write!(f, "El usuario ya está registrado"),
+                Error::AdminNoPuedeRegistrarse => write!(f, "El admin no puede registrarse"),
+                Error::AdminNoPuedeVotar => write!(f, "El admin no puede votar"),
+                Error::CandidatoNoExiste => write!(f, "El candidato no existe"),
+                Error::UsuarioNoCandidato => write!(f, "El usuario no es candidato"),
+                Error::FechaInvalida => write!(f, "Fecha inválida"),
+                Error::Overflow => write!(f, "Overflow"),
+            }
+        }
+    }
+
     /*#[cfg(test)]
     mod tests {
         use super::*;
