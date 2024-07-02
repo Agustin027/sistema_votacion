@@ -1,8 +1,6 @@
 /*To do
 - HACER TESTS
 - hacer reportes en otro contrato
-
-????? aa
  */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]

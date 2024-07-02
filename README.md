@@ -22,7 +22,7 @@ con Blockchain
 
 ## 🧐 About <a name = "about"></a>
 
-Implementación de un sistema de votación electrónica utilizando el lenguaje de programación [Rust](https://www.rust-lang.org/es) y el marco de trabajo [Ink!](https://use.ink/) para contratos inteligentes en la plataforma Substrate. Este sistema permite gestionar elecciones de manera segura y eficiente
+Implementación de un sistema de votación electrónica utilizando el lenguaje de programación [Rust](https://www.rust-lang.org/es) y el marco de trabajo [Ink!](https://use.ink/) para contratos inteligentes en la plataforma Substrate. Este sistema permite gestionar elecciones de manera segura y eficiente.
 
 ## 🏁 Main Features <a name = "Main_Features"></a>
 
