@@ -1,5 +1,5 @@
 [package]
-name = "votaciones"
+name = "Reporte"
 version = "0.1.0"
 authors = ["[Agustin Castillo] <[Agustincasti2002@gmail.com]>"]
 edition = "2021"
