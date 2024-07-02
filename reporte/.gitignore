@@ -1,9 +1,14 @@
 # Ignore build artifacts from the local tests sub-crate.
 /target/
-
+/sistema_votacion/target/
+/sistema_votacion/src/
+/sistema_votacion/cargo.lock
+/sistema_votacion/tarpaulin-report.html
+/sistema_votacion/**/*.rs.bk
 # Ignore backup files creates by cargo fmt.
 **/*.rs.bk
 
 # Remove Cargo.lock when creating an executable, leave it for libraries
 # More information here http://doc.crates.io/guide.html#cargotoml-vs-cargolock
 Cargo.lock
+tarpaulin-report.html
