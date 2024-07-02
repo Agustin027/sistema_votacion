@@ -1,6 +1,6 @@
 <p align="center">
   <a href="" rel="noopener">
- <img width=200px height=200px src="OIG1.jpg" alt="Project logo"></a>
+ <img width=200px height=200px src="Carpincho_y_Ferris.jpg" alt="Project logo"></a>
 </p>
 
 <h3 align="center">Trabajo Final: Sistema de Votación Electrónica
