@@ -1,10 +1,13 @@
 /*To do
 - HACER TESTS
 - hacer reportes en otro contrato
+-hacer una funcion para mostrar los candidatos de una eleccion
  */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
-
+pub use self::sistema_votacion::Eleccion;
+pub use self::sistema_votacion::SistemaVotacionRef;
+pub use self::sistema_votacion::Usuario;
 #[ink::contract]
 mod sistema_votacion {
     use chrono::NaiveDate;
@@ -19,6 +22,7 @@ mod sistema_votacion {
     use ink_env::caller;
     #[ink(storage)]
     pub struct SistemaVotacion {
+        id_contrato_reporte: AccountId,
         admin: Admin,
         elecciones: Vec<Eleccion>,
         usuarios: Vec<Usuario>,
@@ -30,7 +34,6 @@ mod sistema_votacion {
         /// Constructor de la estructura SistemaVotacion que inicializa el admin y la primera eleccion del sistema con los datos ingresados
         #[ink(constructor)]
         pub fn new() -> Self {
-            let aaaa = 0;
             let caller = Self::env().caller();
             SistemaVotacion::new_priv(caller)
         }
@@ -44,10 +47,15 @@ mod sistema_votacion {
             };
 
             Self {
+                id_contrato_reporte: AccountId::from([0x00; 32]),
                 admin,
                 elecciones: Vec::new(),
                 usuarios: Vec::new(),
             }
+        }
+        #[ink(message)]
+        pub fn get_eleccion(&self, id: u64) -> Eleccion {
+            self.elecciones[id as usize].clone()
         }
         #[ink(message)]
         /// funcion para crear una nueva eleccion
@@ -149,9 +157,7 @@ mod sistema_votacion {
             Ok(fecha_actual < fecha_inicio)
         }
 
-        /*
-
-          #[ink(message)]
+        #[ink(message)]
         /// Funcion para obtener el id del admin
         pub fn get_id_admin(&self) -> AccountId {
             SistemaVotacion::get_id_admin_priv(&self)
@@ -161,7 +167,6 @@ mod sistema_votacion {
             ///////////////////
             self.admin.id
         }
-
 
         #[ink(message)]
         pub fn mostrar_validaciones_fecha(&self, id: u64) -> Result<(bool, bool, bool), Error> {
@@ -202,7 +207,7 @@ mod sistema_votacion {
             self.elecciones[id as usize].fecha_fin = fecha_f.to_timestamp()?;
             Ok(())
         }
-        */
+
         //----------------------Funciones de registro---------------------------------------------------------
 
         #[ink(message)]
@@ -359,7 +364,7 @@ mod sistema_votacion {
         //----------------------Funciones de conteo y resultados---------------------------------------------------------
 
         #[ink(message)]
-        /// Funcion para mostrar los resultados de una eleccion
+
         pub fn mostrar_resultados(
             &self,
             id_eleccion: u64,
@@ -375,6 +380,47 @@ mod sistema_votacion {
                 .candidatos
                 .clone();
             Ok(resultados)
+        }
+        //----------------------Funciones par el reporte---------------------------------------------------------
+        // en estas funciones tengo que verificar que el que llama sea el contrato de reporte y no otro contrato o usuario
+        #[ink(message)]
+        /// Funcion para settear el id del contrato de reporte en el sistema de votacion, solo puede ser setteado por el admin. Esto sirve para que el contrato de reporte pueda acceder a los datos del sistema de votacion
+        pub fn set_id_contrato(&mut self, id: AccountId) {
+            self.id_contrato_reporte = id;
+        }
+
+        #[ink(message)]
+        /// Funcion para obtener los votantes registrados de una eleccion
+        pub fn get_votantes(&self, id_eleccion: u64) -> Vec<Usuario> {
+            self.elecciones[id_eleccion as usize].votantes.clone()
+        }
+        #[ink(message)]
+        /// Funcion para obtener los votantes que votaron de una eleccion
+        pub fn get_votantes_que_votaron(&self, id_eleccion: u64) -> Vec<Usuario> {
+            self.elecciones[id_eleccion as usize]
+                .votantes_que_votaron
+                .clone()
+        }
+
+        #[ink(message)]
+        /// Funcion para obtener los usuarios registrados en el sistema, pueden ser votantes o candidatos.
+        pub fn get_usuarios(&self) -> Vec<Usuario> {
+            self.usuarios.clone()
+        }
+        #[ink(message)]
+        /// Funcion para obtener la fecha de inicio de una eleccion
+        pub fn get_fecha_inicio(&self, id_eleccion: u64) -> u64 {
+            self.elecciones[id_eleccion as usize].fecha_inicio
+        }
+        #[ink(message)]
+        /// Funcion para obtener la fecha de fin de una eleccion
+        pub fn get_fecha_fin(&self, id_eleccion: u64) -> u64 {
+            self.elecciones[id_eleccion as usize].fecha_fin
+        }
+        #[ink(message)]
+        /// Funcion para obtener el cargo de una eleccion
+        pub fn get_cargo(&self, id_eleccion: u64) -> String {
+            self.elecciones[id_eleccion as usize].cargo.clone()
         }
     }
     //----------------------Funciones de eleccion---------------------------------------------------------
