@@ -1,7 +1,5 @@
 /*To do
-- HACER TESTS
 -hacer una funcion para mostrar los candidatos de una eleccion
-
  */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
