@@ -1,6 +1,7 @@
 /*
     -Hacer Test
     -En los reportes verificar que la eleccion este cerrada
+    -meter manejo de errores en los reportes
 */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
@@ -10,7 +11,7 @@ mod reporte {
     use ink::prelude::collections::BTreeMap;
     use ink::prelude::string::String;
     use ink::prelude::vec::Vec;
-    use sistema_votacion::{Eleccion, SistemaVotacionRef, Usuario};
+    use sistema_votacion::{Error, SistemaVotacionRef, Usuario};
 
     #[ink(storage)]
     pub struct Reporte {
@@ -23,48 +24,91 @@ mod reporte {
             Self { sistema_votacion }
         }
 
-        #[ink(message)]
-        pub fn reportar(&self, id: u64) -> BTreeMap<AccountId, u64> {
-            let ret = self.sistema_votacion.mostrar_resultados(id).unwrap();
-            ret
-        }
+        fn generar_reporte_registro_votantes_priv(
+            &self,
+            id: u64,
+        ) -> Result<ReporteRegistroVotantes, Error> {
+            if id > self.sistema_votacion.get_tamanio_elecciones() {
+                return Err(Error::EleccionNoExiste);
+            }
 
-        #[ink(message)]
-        pub fn generar_reporte_registro_votantes(&self, id: u64) -> ReporteRegistroVotantes {
-            let votantes_reg = self.sistema_votacion.get_votantes(id);
+            let votantes_reg = self.sistema_votacion.get_votantes(id)?;
+
             let reporte_registro_votantes = ReporteRegistroVotantes {
                 nro_eleccion: id,
                 votantes: votantes_reg,
             };
-            reporte_registro_votantes
+            Ok(reporte_registro_votantes)
         }
 
         #[ink(message)]
-        pub fn generar_reporte_participacion(&self, id: u64) -> ReporteParticipacion {
-            // TO Do agregar verificacion de eleccion cerrada
+        pub fn generar_reporte_registro_votantes(
+            &self,
+            id: u64,
+        ) -> Result<ReporteRegistroVotantes, Error> {
+            self.generar_reporte_registro_votantes_priv(id)
+        }
+
+        fn generar_reporte_participacion_priv(
+            &self,
+            id: u64,
+        ) -> Result<ReporteParticipacion, Error> {
+            let fecha_cierre = self.sistema_votacion.get_fecha_fin(id)?;
+            let fecha_inicio = self.sistema_votacion.get_fecha_inicio(id)?;
+            let fecha_actual = self.env().block_timestamp();
+
+            if fecha_actual < fecha_cierre {
+                return Err(Error::EleccionAbierta);
+            }
+
+            if fecha_actual < fecha_inicio {
+                return Err(Error::EleccionNoActiva);
+            }
+
             let cantidad_votos_emitidos =
-                self.sistema_votacion.get_votantes_que_votaron(id).len() as u64;
-            let cantidad_votantes = self.sistema_votacion.get_votantes(id).len() as u64;
+                self.sistema_votacion.get_votantes_que_votaron(id)?.len() as u64;
+
+            let cantidad_votantes = self.sistema_votacion.get_votantes(id)?.len() as u64;
 
             //despues manejar el error bien y no unwrap
-            let porcentaje_participacion = cantidad_votos_emitidos.checked_mul(100).unwrap_or(0);
+            let porcentaje_participacion = cantidad_votos_emitidos
+                .checked_mul(100)
+                .ok_or(Error::Overflow)?;
 
             porcentaje_participacion
                 .checked_div(cantidad_votantes)
-                .unwrap_or(0);
+                .ok_or(Error::Overflow)?;
 
             let reporte_participacion = ReporteParticipacion {
                 nro_eleccion: id,
                 cantidad_votos_emitidos,
                 porcentaje_participacion,
             };
-            reporte_participacion
+
+            Ok(reporte_participacion)
         }
 
         #[ink(message)]
-        pub fn generar_reporte_resultado(&self, id: u64) -> ReporteResultado {
-            // TO Do agregar verificacion de eleccion cerrada
-            let resultados_desordenados = self.sistema_votacion.mostrar_resultados(id).unwrap();
+        pub fn generar_reporte_participacion(
+            &self,
+            id: u64,
+        ) -> Result<ReporteParticipacion, Error> {
+            self.generar_reporte_participacion_priv(id)
+        }
+
+        fn generar_reporte_resultado_priv(&self, id: u64) -> Result<ReporteResultado, Error> {
+            let fecha_cierre = self.sistema_votacion.get_fecha_fin(id)?;
+            let fecha_inicio = self.sistema_votacion.get_fecha_inicio(id)?;
+            let fecha_actual = self.env().block_timestamp();
+
+            if fecha_actual < fecha_cierre {
+                return Err(Error::EleccionAbierta);
+            }
+            if fecha_actual < fecha_inicio {
+                return Err(Error::EleccionNoActiva);
+            }
+
+            let resultados_desordenados = self.sistema_votacion.get_candidatos(id)?;
             let mut resultados_ordenados = resultados_desordenados.into_iter().collect::<Vec<_>>();
             resultados_ordenados.sort_by(|a, b| b.1.cmp(&a.1));
 
@@ -73,7 +117,12 @@ mod reporte {
                 resultados_ordenados,
             };
 
-            reporte_resultado
+            Ok(reporte_resultado)
+        }
+
+        #[ink(message)]
+        pub fn generar_reporte_resultado(&self, id: u64) -> Result<ReporteResultado, Error> {
+            self.generar_reporte_resultado_priv(id)
         }
     }
 
@@ -99,5 +148,14 @@ mod reporte {
     pub struct ReporteResultado {
         nro_eleccion: u64,
         resultados_ordenados: Vec<(AccountId, u64)>,
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+        use ink_lang as ink;
+
+        #[test]
+        fn test_reportar() {}
     }
 }

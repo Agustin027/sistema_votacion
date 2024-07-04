@@ -1,25 +1,19 @@
 /*To do
 - HACER TESTS
-- hacer reportes en otro contrato
 -hacer una funcion para mostrar los candidatos de una eleccion
+
  */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
-pub use self::sistema_votacion::Eleccion;
+pub use self::sistema_votacion::Error;
 pub use self::sistema_votacion::SistemaVotacionRef;
 pub use self::sistema_votacion::Usuario;
 #[ink::contract]
 mod sistema_votacion {
     use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
-    use core::fmt;
-    use core::panic;
-    use ink::env;
     use ink::prelude::collections::BTreeMap;
     use ink::prelude::string::String;
     use ink::prelude::vec::Vec;
-    use ink_env::account_id;
-    use ink_env::caller;
     #[ink(storage)]
     pub struct SistemaVotacion {
         id_contrato_reporte: AccountId,
@@ -47,7 +41,8 @@ mod sistema_votacion {
             };
 
             Self {
-                id_contrato_reporte: AccountId::from([0x00; 32]),
+                //le pongo el id del admin como id del contrato por defecto, pero despues se puede cambiar con la funcion set_id_contrato
+                id_contrato_reporte: caller,
                 admin,
                 elecciones: Vec::new(),
                 usuarios: Vec::new(),
@@ -59,9 +54,14 @@ mod sistema_votacion {
         }
         #[ink(message)]
         /// funcion para crear una nueva eleccion
-        pub fn crear_eleccion(&mut self, cargo: String, fecha_ini: Fecha, fecha_f: Fecha) {
+        pub fn crear_eleccion(
+            &mut self,
+            cargo: String,
+            fecha_ini: Fecha,
+            fecha_f: Fecha,
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
-            self.crear_eleccion_priv(caller, cargo, fecha_ini, fecha_f);
+            self.crear_eleccion_priv(caller, cargo, fecha_ini, fecha_f)
         }
 
         fn crear_eleccion_priv(
@@ -97,9 +97,9 @@ mod sistema_votacion {
             email: String,
             password: String,
             nuevo_admin: AccountId,
-        ) {
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
-            self.set_admin_priv(caller, nombre, email, password, nuevo_admin);
+            self.set_admin_priv(caller, nombre, email, password, nuevo_admin)
         }
 
         fn set_admin_priv(
@@ -158,17 +158,6 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para obtener el id del admin
-        pub fn get_id_admin(&self) -> AccountId {
-            SistemaVotacion::get_id_admin_priv(&self)
-        }
-
-        fn get_id_admin_priv(&self) -> AccountId {
-            ///////////////////
-            self.admin.id
-        }
-
-        #[ink(message)]
         pub fn mostrar_validaciones_fecha(&self, id: u64) -> Result<(bool, bool, bool), Error> {
             Ok((
                 self.eleccion_activa(id)?,
@@ -212,9 +201,14 @@ mod sistema_votacion {
 
         #[ink(message)]
         /// Funcion para registrar un usuario en el sistema con los datos ingresados,distingue entre votante y candidato y verifica que no se registre el admin como usuario normal
-        pub fn registrar_usuario(&mut self, nombre: String, email: String, rol: RolUsuario) {
+        pub fn registrar_usuario(
+            &mut self,
+            nombre: String,
+            email: String,
+            rol: RolUsuario,
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
-            self.registrar_usuario_priv(caller, nombre, email, rol);
+            self.registrar_usuario_priv(caller, nombre, email, rol)
         }
 
         fn registrar_usuario_priv(
@@ -242,9 +236,9 @@ mod sistema_votacion {
         }
         #[ink(message)]
         /// Funcion para registrar un votante en una eleccion
-        pub fn registrar_votante_en_eleccion(&mut self, id_eleccion: u64) {
+        pub fn registrar_votante_en_eleccion(&mut self, id_eleccion: u64) -> Result<(), Error> {
             let caller = self.env().caller();
-            self.registrar_votante_en_eleccion_priv(caller, id_eleccion);
+            self.registrar_votante_en_eleccion_priv(caller, id_eleccion)
         }
         pub fn registrar_votante_en_eleccion_priv(
             &mut self,
@@ -285,9 +279,9 @@ mod sistema_votacion {
 
         #[ink(message)]
         /// Funcion para registrar un candidato en una eleccion
-        pub fn registrar_candidato_en_eleccion(&mut self, id_eleccion: u64) {
+        pub fn registrar_candidato_en_eleccion(&mut self, id_eleccion: u64) -> Result<(), Error> {
             let caller = self.env().caller();
-            self.registrar_candidato_en_eleccion_priv(caller, id_eleccion);
+            self.registrar_candidato_en_eleccion_priv(caller, id_eleccion)
         }
         fn registrar_candidato_en_eleccion_priv(
             &mut self,
@@ -334,9 +328,9 @@ mod sistema_votacion {
 
         //----------------------Funciones de votacion---------------------------------------------------------
         #[ink(message)]
-        pub fn votar(&mut self, id_eleccion: u64, id_candidato: AccountId) {
+        pub fn votar(&mut self, id_eleccion: u64, id_candidato: AccountId) -> Result<(), Error> {
             let caller = self.env().caller();
-            self.votar_priv(caller, id_eleccion, id_candidato);
+            self.votar_priv(caller, id_eleccion, id_candidato)
         }
         fn votar_priv(
             &mut self,
@@ -354,73 +348,163 @@ mod sistema_votacion {
                 _ => return Err(Error::UsuarioNoVotante),
             };
 
-            if caller == self.admin.id {
-                return Err(Error::AdminNoPuedeVotar);
-            }
+            self.elecciones[id_eleccion as usize].votar_en_eleccion(id_candidato, votante)?;
 
-            self.elecciones[id_eleccion as usize].votar_en_eleccion(id_candidato, votante);
             Ok(())
         }
-        //----------------------Funciones de conteo y resultados---------------------------------------------------------
 
         #[ink(message)]
-
-        pub fn mostrar_resultados(
-            &self,
-            id_eleccion: u64,
-        ) -> Result<BTreeMap<AccountId, u64>, Error> {
-            if !self.eleccion_cerrada(id_eleccion)? {
-                return Err(Error::EleccionAbierta);
-            }
-
-            let resultados = self
-                .elecciones
-                .get(id_eleccion as usize)
-                .ok_or(Error::EleccionNoExiste)?
-                .candidatos
-                .clone();
-            Ok(resultados)
+        pub fn get_tamanio_elecciones(&self) -> u64 {
+            self.elecciones.len() as u64
         }
-        //----------------------Funciones par el reporte---------------------------------------------------------
+        //----------------------Funciones para el reporte---------------------------------------------------------
         // en estas funciones tengo que verificar que el que llama sea el contrato de reporte y no otro contrato o usuario
+
         #[ink(message)]
         /// Funcion para settear el id del contrato de reporte en el sistema de votacion, solo puede ser setteado por el admin. Esto sirve para que el contrato de reporte pueda acceder a los datos del sistema de votacion
         pub fn set_id_contrato(&mut self, id: AccountId) {
             self.id_contrato_reporte = id;
         }
 
+        fn get_candidatos_priv(
+            &self,
+            id_eleccion: u64,
+            caller: AccountId,
+        ) -> Result<BTreeMap<AccountId, u64>, Error> {
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+
+            if id_eleccion as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            Ok(self.elecciones[id_eleccion as usize].candidatos.clone())
+        }
+
+        #[ink(message)]
+        ///Funcion para obtener los candidatos con sus votos de una eleccion
+        pub fn get_candidatos(&self, id_eleccion: u64) -> Result<BTreeMap<AccountId, u64>, Error> {
+            let caller = self.env().caller();
+            self.get_candidatos_priv(id_eleccion, caller)
+        }
+
+        fn get_votantes_priv(
+            &self,
+            id_eleccion: u64,
+            caller: AccountId,
+        ) -> Result<Vec<Usuario>, Error> {
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+
+            if id_eleccion as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            Ok(self.elecciones[id_eleccion as usize].votantes.clone())
+        }
+
         #[ink(message)]
         /// Funcion para obtener los votantes registrados de una eleccion
-        pub fn get_votantes(&self, id_eleccion: u64) -> Vec<Usuario> {
-            self.elecciones[id_eleccion as usize].votantes.clone()
+        pub fn get_votantes(&self, id_eleccion: u64) -> Result<Vec<Usuario>, Error> {
+            let caller = self.env().caller();
+            self.get_votantes_priv(id_eleccion, caller)
         }
+
+        fn get_votantes_que_votaron_priv(
+            &self,
+            id_eleccion: u64,
+            caller: AccountId,
+        ) -> Result<Vec<Usuario>, Error> {
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+
+            if id_eleccion as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+            Ok(self.elecciones[id_eleccion as usize]
+                .votantes_que_votaron
+                .clone())
+        }
+
         #[ink(message)]
         /// Funcion para obtener los votantes que votaron de una eleccion
-        pub fn get_votantes_que_votaron(&self, id_eleccion: u64) -> Vec<Usuario> {
-            self.elecciones[id_eleccion as usize]
-                .votantes_que_votaron
-                .clone()
+        pub fn get_votantes_que_votaron(&self, id_eleccion: u64) -> Result<Vec<Usuario>, Error> {
+            let caller = self.env().caller();
+            self.get_votantes_que_votaron_priv(id_eleccion, caller)
+        }
+
+        fn get_usuarios_priv(&self, caller: AccountId) -> Result<Vec<Usuario>, Error> {
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+            Ok(self.usuarios.clone())
         }
 
         #[ink(message)]
         /// Funcion para obtener los usuarios registrados en el sistema, pueden ser votantes o candidatos.
-        pub fn get_usuarios(&self) -> Vec<Usuario> {
-            self.usuarios.clone()
+        pub fn get_usuarios(&self) -> Result<Vec<Usuario>, Error> {
+            let caller = self.env().caller();
+            self.get_usuarios_priv(caller)
         }
+
+        fn get_fecha_inicio_priv(&self, id_eleccion: u64, caller: AccountId) -> Result<u64, Error> {
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+
+            if id_eleccion as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            Ok(self.elecciones[id_eleccion as usize].fecha_inicio)
+        }
+
         #[ink(message)]
         /// Funcion para obtener la fecha de inicio de una eleccion
-        pub fn get_fecha_inicio(&self, id_eleccion: u64) -> u64 {
-            self.elecciones[id_eleccion as usize].fecha_inicio
+        pub fn get_fecha_inicio(&self, id_eleccion: u64) -> Result<u64, Error> {
+            let caller = self.env().caller();
+            self.get_fecha_inicio_priv(id_eleccion, caller)
         }
+
+        fn get_fecha_fin_priv(&self, id_eleccion: u64, caller: AccountId) -> Result<u64, Error> {
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+
+            if id_eleccion as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            Ok(self.elecciones[id_eleccion as usize].fecha_fin)
+        }
+
         #[ink(message)]
         /// Funcion para obtener la fecha de fin de una eleccion
-        pub fn get_fecha_fin(&self, id_eleccion: u64) -> u64 {
-            self.elecciones[id_eleccion as usize].fecha_fin
+        pub fn get_fecha_fin(&self, id_eleccion: u64) -> Result<u64, Error> {
+            let caller = self.env().caller();
+            self.get_fecha_fin_priv(id_eleccion, caller)
         }
+
+        fn get_cargo_priv(&self, id_eleccion: u64, caller: AccountId) -> Result<String, Error> {
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+
+            if id_eleccion as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+
+            Ok(self.elecciones[id_eleccion as usize].cargo.clone())
+        }
+
         #[ink(message)]
         /// Funcion para obtener el cargo de una eleccion
-        pub fn get_cargo(&self, id_eleccion: u64) -> String {
-            self.elecciones[id_eleccion as usize].cargo.clone()
+        pub fn get_cargo(&self, id_eleccion: u64) -> Result<String, Error> {
+            let caller = self.env().caller();
+            self.get_cargo_priv(id_eleccion, caller)
         }
     }
     //----------------------Funciones de eleccion---------------------------------------------------------
@@ -455,9 +539,9 @@ mod sistema_votacion {
                 .ok_or(Error::FechaInvalida)?; // Manejo del error para una fecha inválida
 
             // Arranca a las 00:00:00 del día
-            let datetime = date.and_hms(0, 0, 0);
+            let datetime = date.and_hms_opt(0, 0, 0).ok_or(Error::FechaInvalida)?;
 
-            let timestamp_secs = datetime.timestamp() as u64;
+            let timestamp_secs = datetime.and_utc().timestamp() as u64;
 
             // Pasar a milisegundos, manejando posible overflow
             timestamp_secs.checked_mul(1000).ok_or(Error::Overflow)
@@ -527,7 +611,6 @@ mod sistema_votacion {
         UsuarioNoVotante,
         UsuarioYaRegistrado,
         AdminNoPuedeRegistrarse,
-        AdminNoPuedeVotar,
         CandidatoNoExiste,
         UsuarioNoCandidato,
         FechaInvalida,
@@ -544,7 +627,6 @@ mod sistema_votacion {
                 Error::UsuarioNoVotante => write!(f, "El usuario no es votante"),
                 Error::UsuarioYaRegistrado => write!(f, "El usuario ya está registrado"),
                 Error::AdminNoPuedeRegistrarse => write!(f, "El admin no puede registrarse"),
-                Error::AdminNoPuedeVotar => write!(f, "El admin no puede votar"),
                 Error::CandidatoNoExiste => write!(f, "El candidato no existe"),
                 Error::UsuarioNoCandidato => write!(f, "El usuario no es candidato"),
                 Error::FechaInvalida => write!(f, "Fecha inválida"),
@@ -748,12 +830,14 @@ mod sistema_votacion {
         #[ink::test]
         fn test_registrar_votante_en_eleccion_priv() {
             let mut sistema = SistemaVotacion::new_priv(AccountId::from([0x01; 32]));
-            sistema.registrar_usuario_priv(
-                AccountId::from([0x02; 32]),
-                "Agustin".to_string(),
-                " ".to_string(),
-                RolUsuario::Votante,
-            );
+            sistema
+                .registrar_usuario_priv(
+                    AccountId::from([0x02; 32]),
+                    "Agustin".to_string(),
+                    " ".to_string(),
+                    RolUsuario::Votante,
+                )
+                .unwrap();
             sistema
                 .crear_eleccion_priv(
                     AccountId::from([0x01; 32]),
@@ -770,19 +854,25 @@ mod sistema_votacion {
                     },
                 )
                 .unwrap();
-
             assert!(sistema
                 .registrar_votante_en_eleccion_priv(AccountId::from([0x02; 32]), 0)
                 .is_ok());
             assert!(sistema
                 .registrar_votante_en_eleccion_priv(AccountId::from([0x02; 32]), 0)
                 .is_err());
-            assert!(sistema
-                .registrar_votante_en_eleccion_priv(AccountId::from([0x01; 32]), 0)
-                .is_err());
+
             assert!(sistema
                 .registrar_votante_en_eleccion_priv(AccountId::from([0x02; 32]), 1)
                 .is_err(),);
+            assert!(sistema
+                .registrar_votante_en_eleccion_priv(AccountId::from([0x01; 32]), 0)
+                .is_err());
+
+            // setear timestamp par que la eleccion este abierta y no se pueda registrar votante
+            set_block_timestamp::<ink_env::DefaultEnvironment>(1706745600000);
+            assert!(sistema
+                .registrar_votante_en_eleccion_priv(AccountId::from([0x02; 32]), 0)
+                .is_err());
         }
         #[ink::test]
         fn test_registrar_candidato_en_eleccion_priv() {
@@ -822,73 +912,377 @@ mod sistema_votacion {
             assert!(sistema
                 .registrar_candidato_en_eleccion_priv(AccountId::from([0x02; 32]), 1)
                 .is_err());
+
+            set_block_timestamp::<ink_env::DefaultEnvironment>(1706745600000);
+            assert!(sistema
+                .registrar_candidato_en_eleccion_priv(AccountId::from([0x02; 32]), 0)
+                .is_err());
         }
         #[ink::test]
         fn test_votar_priv() {
-            let mut sistema = SistemaVotacion::new_priv(AccountId::from([0x01; 32]));
-            // Crear una elección
-            sistema.crear_eleccion_priv(
-                AccountId::from([0x01; 32]),
-                "cargo".to_string(),
-                Fecha {
-                    dias: 1,
-                    mes: 1,
-                    anio: 2024,
-                },
-                Fecha {
-                    dias: 1,
-                    mes: 1,
-                    anio: 2025,
-                },
-            );
-            // registrar usario candidato
+            let id_admin = AccountId::from([0x01; 32]);
+            let id_votante = AccountId::from([0x02; 32]);
+            let id_candidato = AccountId::from([0x03; 32]);
+            set_block_timestamp::<ink_env::DefaultEnvironment>(1672531200000);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema
+                .crear_eleccion_priv(
+                    id_admin,
+                    "cargo".to_string(),
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2024,
+                    },
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2025,
+                    },
+                )
+                .unwrap();
             sistema.registrar_usuario_priv(
-                AccountId::from([0x02; 32]),
+                id_votante,
                 "Agustin".to_string(),
                 " ".to_string(),
+                RolUsuario::Votante,
+            );
+            sistema.registrar_usuario_priv(
+                id_candidato,
+                "".to_string(),
+                "".to_string(),
                 RolUsuario::Candidato,
             );
-            // registrar usario votante
-            sistema.registrar_usuario_priv(
-                AccountId::from([0x03; 32]),
-                "Agustin".to_string(),
-                " ".to_string(),
-                RolUsuario::Votante,
-            );
 
-            sistema.registrar_usuario_priv(
-                AccountId::from([0x04; 32]),
-                "Agustin".to_string(),
-                " ".to_string(),
-                RolUsuario::Votante,
-            );
+            sistema
+                .registrar_votante_en_eleccion_priv(id_votante, 0)
+                .unwrap();
 
-            // registrar candidato en eleccion
             sistema
-                .registrar_candidato_en_eleccion_priv(AccountId::from([0x02; 32]), 0)
+                .registrar_candidato_en_eleccion_priv(id_candidato, 0)
                 .unwrap();
-            // registrar votante en eleccion
-            sistema
-                .registrar_votante_en_eleccion_priv(AccountId::from([0x03; 32]), 0)
-                .unwrap();
-            sistema
-                .registrar_votante_en_eleccion_priv(AccountId::from([0x04; 32]), 0)
-                .unwrap();
-            ink_env::test::set_block_timestamp::<ink_env::DefaultEnvironment>(1719878400000);
-            // Votar
-            sistema.votar_priv(AccountId::from([0x03; 32]), 0, AccountId::from([0x02; 32]));
+
+            assert!(sistema.votar_priv(id_votante, 0, id_candidato).is_err());
+
+            set_block_timestamp::<ink_env::DefaultEnvironment>(1706745600000);
+
             assert!(sistema
-                .votar_priv(AccountId::from([0x02; 32]), 0, AccountId::from([0x02; 32]))
+                .votar_priv(id_votante, 0, AccountId::from([0x09; 32]))
                 .is_err());
-            assert!(sistema
-                .votar_priv(AccountId::from([0x01; 32]), 0, AccountId::from([0x02; 32]))
-                .is_err());
-            assert!(sistema
-                .votar_priv(AccountId::from([0x04; 32]), 1, AccountId::from([0x03; 32]))
-                .is_err());
+
+            assert!(sistema.votar_priv(id_admin, 0, id_candidato).is_err());
+            assert!(sistema.votar_priv(id_votante, 0, id_candidato).is_ok());
+            assert!(sistema.votar_priv(id_votante, 0, id_candidato).is_err());
         }
         #[ink::test]
         fn test_votar_en_eleccion() {}
+
+        #[ink::test]
+        fn test_get_candidatos_priv() {
+            let id_admin = AccountId::from([0x01; 32]);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema
+                .crear_eleccion_priv(
+                    id_admin,
+                    "cargo".to_string(),
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2024,
+                    },
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2025,
+                    },
+                )
+                .unwrap();
+            sistema
+                .registrar_usuario_priv(
+                    AccountId::from([0x02; 32]),
+                    "Agustin".to_string(),
+                    " ".to_string(),
+                    RolUsuario::Candidato,
+                )
+                .unwrap();
+
+            let id_contrato = AccountId::from([0x03; 32]);
+            sistema.set_id_contrato(id_contrato);
+
+            sistema
+                .registrar_candidato_en_eleccion_priv(AccountId::from([0x02; 32]), 0)
+                .unwrap();
+
+            assert!(sistema.get_candidatos_priv(0, id_contrato).is_ok());
+            assert!(sistema
+                .get_candidatos_priv(0, AccountId::from([0x02; 32]))
+                .is_err());
+
+            let mut btree = BTreeMap::new();
+            btree.insert(AccountId::from([0x02; 32]), 0);
+            assert_eq!(sistema.get_candidatos_priv(0, id_contrato).unwrap(), btree);
+
+            assert!(sistema.get_candidatos_priv(1, id_contrato).is_err());
+        }
+
+        #[ink::test]
+        fn test_get_votantes_priv() {
+            let id_admin = AccountId::from([0x01; 32]);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema
+                .crear_eleccion_priv(
+                    id_admin,
+                    "cargo".to_string(),
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2024,
+                    },
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2025,
+                    },
+                )
+                .unwrap();
+            sistema
+                .registrar_usuario_priv(
+                    AccountId::from([0x02; 32]),
+                    "Agustin".to_string(),
+                    " ".to_string(),
+                    RolUsuario::Votante,
+                )
+                .unwrap();
+
+            let id_contrato = AccountId::from([0x03; 32]);
+            sistema.set_id_contrato(id_contrato);
+
+            sistema
+                .registrar_votante_en_eleccion_priv(AccountId::from([0x02; 32]), 0)
+                .unwrap();
+
+            assert!(sistema.get_votantes_priv(0, id_contrato).is_ok());
+            assert!(sistema
+                .get_votantes_priv(0, AccountId::from([0x02; 32]))
+                .is_err());
+
+            let mut vec = Vec::new();
+            vec.push(Usuario {
+                id: AccountId::from([0x02; 32]),
+                nombre: "Agustin".to_string(),
+                email: " ".to_string(),
+                rol: RolUsuario::Votante,
+            });
+            assert_eq!(sistema.get_votantes_priv(0, id_contrato).unwrap(), vec);
+
+            assert!(sistema.get_votantes_priv(1, id_contrato).is_err());
+        }
+
+        #[ink::test]
+        fn test_get_votantes_que_votaron_priv() {
+            let id_admin = AccountId::from([0x01; 32]);
+            let id_votante = AccountId::from([0x02; 32]);
+            let id_contrato = AccountId::from([0x03; 32]);
+            let id_candidato = AccountId::from([0x04; 32]);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema
+                .crear_eleccion_priv(
+                    id_admin,
+                    "cargo".to_string(),
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2024,
+                    },
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2025,
+                    },
+                )
+                .unwrap();
+            sistema.set_id_contrato(id_contrato);
+            ink_env::test::set_block_timestamp::<ink_env::DefaultEnvironment>(1672531200000);
+
+            sistema
+                .registrar_usuario_priv(
+                    id_votante,
+                    "Agustin".to_string(),
+                    " ".to_string(),
+                    RolUsuario::Votante,
+                )
+                .unwrap();
+
+            sistema
+                .registrar_usuario_priv(
+                    id_candidato,
+                    "".to_string(),
+                    "".to_string(),
+                    RolUsuario::Candidato,
+                )
+                .unwrap();
+
+            sistema
+                .registrar_votante_en_eleccion_priv(id_votante, 0)
+                .unwrap();
+            sistema
+                .registrar_candidato_en_eleccion_priv(id_candidato, 0)
+                .unwrap();
+
+            ink_env::test::set_block_timestamp::<ink_env::DefaultEnvironment>(1706745600000);
+            sistema.votar_priv(id_votante, 0, id_candidato).unwrap();
+
+            let mut vec = Vec::new();
+            vec.push(Usuario {
+                id: AccountId::from([0x02; 32]),
+                nombre: "Agustin".to_string(),
+                email: " ".to_string(),
+                rol: RolUsuario::Votante,
+            });
+
+            assert!(sistema
+                .get_votantes_que_votaron_priv(0, id_contrato)
+                .is_ok());
+
+            assert_eq!(
+                sistema
+                    .get_votantes_que_votaron_priv(0, id_contrato)
+                    .unwrap(),
+                vec
+            );
+
+            assert!(sistema
+                .get_votantes_que_votaron_priv(1, id_contrato)
+                .is_err());
+
+            assert!(sistema
+                .get_votantes_que_votaron_priv(0, id_votante)
+                .is_err());
+        }
+
+        #[ink::test]
+        fn test_get_usuarios_priv() {
+            let id_admin = AccountId::from([0x01; 32]);
+            let id_contrato = AccountId::from([0x03; 32]);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema.set_id_contrato(id_contrato);
+            sistema
+                .registrar_usuario_priv(
+                    AccountId::from([0x02; 32]),
+                    "Agustin".to_string(),
+                    " ".to_string(),
+                    RolUsuario::Votante,
+                )
+                .unwrap();
+
+            let mut vec = Vec::new();
+            vec.push(Usuario {
+                id: AccountId::from([0x02; 32]),
+                nombre: "Agustin".to_string(),
+                email: " ".to_string(),
+                rol: RolUsuario::Votante,
+            });
+
+            assert!(sistema.get_usuarios_priv(id_contrato).is_ok());
+            assert_eq!(sistema.get_usuarios_priv(id_contrato).unwrap(), vec);
+
+            assert!(sistema
+                .get_usuarios_priv(AccountId::from([0x02; 32]))
+                .is_err());
+        }
+        #[ink::test]
+        fn test_get_fecha_inicio_priv() {
+            let id_admin = AccountId::from([0x01; 32]);
+            let id_contrato = AccountId::from([0x03; 32]);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema.set_id_contrato(id_contrato);
+            sistema
+                .crear_eleccion_priv(
+                    id_admin,
+                    "cargo".to_string(),
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2024,
+                    },
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2025,
+                    },
+                )
+                .unwrap();
+
+            assert!(sistema.get_fecha_inicio_priv(0, id_admin).is_err());
+            assert!(sistema.get_fecha_inicio_priv(0, id_contrato).is_ok());
+            assert_eq!(
+                sistema.get_fecha_inicio_priv(0, id_contrato).unwrap(),
+                1704067200000
+            );
+
+            assert!(sistema.get_fecha_inicio_priv(1, id_contrato).is_err());
+        }
+        #[ink::test]
+        fn test_get_fecha_fin_priv() {
+            let id_admin = AccountId::from([0x01; 32]);
+            let id_contrato = AccountId::from([0x03; 32]);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema.set_id_contrato(id_contrato);
+            sistema
+                .crear_eleccion_priv(
+                    id_admin,
+                    "cargo".to_string(),
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2024,
+                    },
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2025,
+                    },
+                )
+                .unwrap();
+
+            assert!(sistema.get_fecha_fin_priv(0, id_admin).is_err());
+            assert!(sistema.get_fecha_fin_priv(0, id_contrato).is_ok());
+            assert_eq!(
+                sistema.get_fecha_fin_priv(0, id_contrato).unwrap(),
+                1735689600000
+            );
+
+            assert!(sistema.get_fecha_fin_priv(1, id_contrato).is_err());
+        }
+        #[ink::test]
+        fn test_get_cargo_priv() {
+            let id_admin = AccountId::from([0x01; 32]);
+            let id_contrato = AccountId::from([0x03; 32]);
+            let mut sistema = SistemaVotacion::new_priv(id_admin);
+            sistema.set_id_contrato(id_contrato);
+            sistema
+                .crear_eleccion_priv(
+                    id_admin,
+                    "cargo".to_string(),
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2024,
+                    },
+                    Fecha {
+                        dias: 1,
+                        mes: 1,
+                        anio: 2025,
+                    },
+                )
+                .unwrap();
+            assert!(sistema.get_cargo_priv(0, id_admin).is_err());
+            assert!(sistema.get_cargo_priv(0, id_contrato).is_ok());
+            assert_eq!(sistema.get_cargo_priv(0, id_contrato).unwrap(), "cargo");
+
+            assert!(sistema.get_cargo_priv(1, id_contrato).is_err());
+        }
+        #[ink::test]
         #[test]
         fn test_display_formatting() {
             use std::fmt::Write;
@@ -905,7 +1299,6 @@ mod sistema_votacion {
                     Error::AdminNoPuedeRegistrarse,
                     "El admin no puede registrarse",
                 ),
-                (Error::AdminNoPuedeVotar, "El admin no puede votar"),
                 (Error::CandidatoNoExiste, "El candidato no existe"),
                 (Error::UsuarioNoCandidato, "El usuario no es candidato"),
                 (Error::FechaInvalida, "Fecha inválida"),
