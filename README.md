@@ -38,6 +38,6 @@ Implementación de un sistema de votación electrónica utilizando el lenguaje d
 
 ## ✍️ Authors <a name = "authors"></a>
 
-- [Agustin Castillo](https://github.com/Agustin027)
+- [Agustin Castillo](https://github.com/Agustin027) -[Fernando Bannon](https://github.com/fexxoo) -[Tomas Aldao](https://github.com/AldaoTomas)
 
 </a>

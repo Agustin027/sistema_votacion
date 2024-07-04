@@ -4,6 +4,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 pub use self::sistema_votacion::Error;
+pub use self::sistema_votacion::RolUsuario;
 pub use self::sistema_votacion::SistemaVotacionRef;
 pub use self::sistema_votacion::Usuario;
 #[ink::contract]
@@ -18,6 +19,12 @@ mod sistema_votacion {
         admin: Admin,
         elecciones: Vec<Eleccion>,
         usuarios: Vec<Usuario>,
+    }
+
+    impl Default for SistemaVotacion {
+        fn default() -> Self {
+            Self::new()
+        }
     }
 
     impl SistemaVotacion {
@@ -46,12 +53,9 @@ mod sistema_votacion {
                 usuarios: Vec::new(),
             }
         }
+
         #[ink(message)]
-        pub fn get_eleccion(&self, id: u64) -> Eleccion {
-            self.elecciones[id as usize].clone()
-        }
-        #[ink(message)]
-        /// funcion para crear una nueva eleccion
+        /// funcion para crear una eleccion en el sistema con los datos ingresados, solo el admin puede crear elecciones
         pub fn crear_eleccion(
             &mut self,
             cargo: String,
@@ -88,7 +92,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para settear un nuevo admin
+        /// Funcion para settear un nuevo admin en el sistema con los datos ingresados, solo el admin actual puede settear un nuevo admin
         pub fn set_admin(
             &mut self,
             nombre: String,
@@ -155,32 +159,9 @@ mod sistema_votacion {
             Ok(fecha_actual < fecha_inicio)
         }
 
+        //esta funcion la hice para poder cambiar las fechas y poder testear mas facil el sistema.Solo el admin puede cambiar las fechas
         #[ink(message)]
-        pub fn mostrar_validaciones_fecha(&self, id: u64) -> Result<(bool, bool, bool), Error> {
-            Ok((
-                self.eleccion_activa(id)?,
-                self.eleccion_cerrada(id)?,
-                self.eleccion_no_abierta(id)?,
-            ))
-        }
-
-        #[ink(message)]
-        pub fn mostrar_fechas(&self, id: u64) -> (u64, u64, u64) {
-            (
-                self.elecciones[id as usize].fecha_inicio,
-                self.elecciones[id as usize].fecha_fin,
-                self.env().block_timestamp(),
-            )
-        }
-
-        #[ink(message)]
-        /// esto lo tengo que borrar despues, es solo para probar que se crean las elecciones
-        pub fn get_elecciones(&self) -> Vec<Eleccion> {
-            self.elecciones.clone()
-        }
-
-        //esto es para probar que funcionan las funciones de verificacion de fecha
-        #[ink(message)]
+        /// Funcion para cambiar las fechas de inicio y fin de una eleccion
         pub fn cambiar_fechas_eleccion(
             &mut self,
             id: u64,
@@ -233,7 +214,7 @@ mod sistema_votacion {
             Ok(())
         }
         #[ink(message)]
-        /// Funcion para registrar un votante en una eleccion
+        /// Funcion para registrar un votante en una eleccion con el id de la eleccion ingresado, solo puede ser llamada por un votante y no puede registrarse dos veces en la misma eleccion
         pub fn registrar_votante_en_eleccion(&mut self, id_eleccion: u64) -> Result<(), Error> {
             let caller = self.env().caller();
             self.registrar_votante_en_eleccion_priv(caller, id_eleccion)
@@ -276,7 +257,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para registrar un candidato en una eleccion
+        /// Funcion para registrar un candidato en una eleccion con el id de la eleccion ingresado, solo puede ser llamada por un candidato y no puede registrarse dos veces en la misma eleccion
         pub fn registrar_candidato_en_eleccion(&mut self, id_eleccion: u64) -> Result<(), Error> {
             let caller = self.env().caller();
             self.registrar_candidato_en_eleccion_priv(caller, id_eleccion)
@@ -326,6 +307,7 @@ mod sistema_votacion {
 
         //----------------------Funciones de votacion---------------------------------------------------------
         #[ink(message)]
+        /// Funcion para votar en una eleccion con el id de la eleccion y el id del candidato ingresados, solo puede votar un votante y no puede votar dos veces en la misma eleccion
         pub fn votar(&mut self, id_eleccion: u64, id_candidato: AccountId) -> Result<(), Error> {
             let caller = self.env().caller();
             self.votar_priv(caller, id_eleccion, id_candidato)
@@ -351,17 +333,29 @@ mod sistema_votacion {
             Ok(())
         }
 
-        #[ink(message)]
-        pub fn get_tamanio_elecciones(&self) -> u64 {
-            self.elecciones.len() as u64
-        }
         //----------------------Funciones para el reporte---------------------------------------------------------
         // en estas funciones tengo que verificar que el que llama sea el contrato de reporte y no otro contrato o usuario
 
         #[ink(message)]
         /// Funcion para settear el id del contrato de reporte en el sistema de votacion, solo puede ser setteado por el admin. Esto sirve para que el contrato de reporte pueda acceder a los datos del sistema de votacion
-        pub fn set_id_contrato(&mut self, id: AccountId) {
+        pub fn set_id_contrato(&mut self, id: AccountId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            if self.admin.id != caller {
+                return Err(Error::PermisoDenegado);
+            }
+
             self.id_contrato_reporte = id;
+            Ok(())
+        }
+
+        #[ink(message)]
+        /// Funcion para obtener el id del contrato de reporte solo puede ser llamada por el contrato de reporte
+        pub fn get_tamanio_elecciones(&self) -> Result<u64, Error> {
+            let caller = self.env().caller();
+            if self.id_contrato_reporte != caller {
+                return Err(Error::PermisoDenegado);
+            }
+            Ok(self.elecciones.len() as u64)
         }
 
         fn get_candidatos_priv(
@@ -381,7 +375,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        ///Funcion para obtener los candidatos con sus votos de una eleccion
+        ///Funcion para obtener los candidatos con sus votos de una eleccion solo puede ser llamada por el contrato de reporte
         pub fn get_candidatos(&self, id_eleccion: u64) -> Result<BTreeMap<AccountId, u64>, Error> {
             let caller = self.env().caller();
             self.get_candidatos_priv(id_eleccion, caller)
@@ -404,7 +398,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para obtener los votantes registrados de una eleccion
+        /// Funcion para obtener los votantes registrados de una eleccion solo puede ser llamada por el contrato de reporte
         pub fn get_votantes(&self, id_eleccion: u64) -> Result<Vec<Usuario>, Error> {
             let caller = self.env().caller();
             self.get_votantes_priv(id_eleccion, caller)
@@ -428,7 +422,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para obtener los votantes que votaron de una eleccion
+        /// Funcion para obtener los votantes que votaron de una eleccion solo puede ser llamada por el contrato de reporte
         pub fn get_votantes_que_votaron(&self, id_eleccion: u64) -> Result<Vec<Usuario>, Error> {
             let caller = self.env().caller();
             self.get_votantes_que_votaron_priv(id_eleccion, caller)
@@ -442,7 +436,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para obtener los usuarios registrados en el sistema, pueden ser votantes o candidatos.
+        /// Funcion para obtener los usuarios registrados en el sistema, pueden ser votantes o candidatos. Solo puede ser llamada por el contrato de reporte
         pub fn get_usuarios(&self) -> Result<Vec<Usuario>, Error> {
             let caller = self.env().caller();
             self.get_usuarios_priv(caller)
@@ -461,7 +455,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para obtener la fecha de inicio de una eleccion
+        /// Funcion para obtener la fecha de inicio de una eleccion solo puede ser llamada por el contrato de reporte
         pub fn get_fecha_inicio(&self, id_eleccion: u64) -> Result<u64, Error> {
             let caller = self.env().caller();
             self.get_fecha_inicio_priv(id_eleccion, caller)
@@ -480,7 +474,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para obtener la fecha de fin de una eleccion
+        /// Funcion para obtener la fecha de fin de una eleccion solo puede ser llamada por el contrato de reporte
         pub fn get_fecha_fin(&self, id_eleccion: u64) -> Result<u64, Error> {
             let caller = self.env().caller();
             self.get_fecha_fin_priv(id_eleccion, caller)
@@ -499,7 +493,7 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        /// Funcion para obtener el cargo de una eleccion
+        /// Funcion para obtener el cargo de una eleccion solo puede ser llamada por el contrato de reporte
         pub fn get_cargo(&self, id_eleccion: u64) -> Result<String, Error> {
             let caller = self.env().caller();
             self.get_cargo_priv(id_eleccion, caller)
@@ -586,6 +580,16 @@ mod sistema_votacion {
         nombre: String,
         email: String,
         rol: RolUsuario,
+    }
+    impl Usuario {
+        pub fn new(id: AccountId, nombre: String, email: String, rol: RolUsuario) -> Self {
+            Self {
+                id,
+                nombre,
+                email,
+                rol,
+            }
+        }
     }
 
     //----------------------Structs de fecha---------------------------------------------------------
@@ -972,8 +976,6 @@ mod sistema_votacion {
             assert!(sistema.votar_priv(id_votante, 0, id_candidato).is_ok());
             assert!(sistema.votar_priv(id_votante, 0, id_candidato).is_err());
         }
-        #[ink::test]
-        fn test_votar_en_eleccion() {}
 
         #[ink::test]
         fn test_get_candidatos_priv() {
@@ -1314,40 +1316,6 @@ mod sistema_votacion {
                 // Verifica que el mensaje formateado coincida con el mensaje esperado
                 assert_eq!(formatted, *expected_message);
             }
-        }
-    }
-
-    #[cfg(all(test, feature = "e2e-tests"))]
-    mod e2e_tests {
-        use super::*;
-        use ink::primitives::AccountId;
-        use ink_e2e::ContractsBackend;
-
-        #[ink_e2e::test]
-        async fn test_votacion<Client: E2EBackend>(mut client: Client) -> E2EResult<()> {
-            let mut constructor = SistemaVotacion::new();
-            let contract = client
-                .instantiate("SistemaVotacion", &ink_e2e::bob(), &mut constructor)
-                .submit()
-                .await
-                .expect("Failed to instantiate contract");
-            let call_builder = contract.call_builder::<SistemaVotacion>();
-
-            let fehcai = Fecha {
-                dias: 7,
-                mes: 6,
-                anio: 2024,
-            };
-            let fehcaf = Fecha {
-                dias: 7,
-                mes: 6,
-                anio: 2025,
-            };
-            call_builder
-                .crear_eleccion("cargo".to_string(), fehcai, fehcaf)
-                .exec()
-                .await?;
-            Ok(())
         }
     }
 }

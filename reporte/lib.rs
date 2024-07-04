@@ -9,7 +9,6 @@
 #[ink::contract]
 mod reporte {
     use ink::prelude::collections::BTreeMap;
-    use ink::prelude::string::String;
     use ink::prelude::vec::Vec;
     use sistema_votacion::{Error, SistemaVotacionRef, Usuario};
 
@@ -28,7 +27,7 @@ mod reporte {
             &self,
             id: u64,
         ) -> Result<ReporteRegistroVotantes, Error> {
-            if id > self.sistema_votacion.get_tamanio_elecciones() {
+            if id > self.sistema_votacion.get_tamanio_elecciones()? {
                 return Err(Error::EleccionNoExiste);
             }
 
@@ -145,17 +144,14 @@ mod reporte {
 
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct ReporteResultado {
         nro_eleccion: u64,
         resultados_ordenados: Vec<(AccountId, u64)>,
     }
 
     #[cfg(test)]
-    mod test {
-        use super::*;
-        use ink_lang as ink;
-
-        #[test]
-        fn test_reportar() {}
+    mod tests {
+        // ???
     }
 }
