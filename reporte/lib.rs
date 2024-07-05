@@ -1,7 +1,5 @@
 /*
-    -Hacer Test
-    -En los reportes verificar que la eleccion este cerrada
-    -meter manejo de errores en los reportes
+
 */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
@@ -27,12 +25,15 @@ mod reporte {
             &self,
             id: u64,
         ) -> Result<ReporteRegistroVotantes, Error> {
+            //verifica que la elección exista
             if id > self.sistema_votacion.get_tamanio_elecciones()? {
                 return Err(Error::EleccionNoExiste);
             }
 
+            //traigo los votantes registrados en la elección desde el contrato sistema_votacion
             let votantes_reg = self.sistema_votacion.get_votantes(id)?;
 
+            //creo el reporte
             let reporte_registro_votantes = ReporteRegistroVotantes {
                 nro_eleccion: id,
                 votantes: votantes_reg,
@@ -41,6 +42,7 @@ mod reporte {
         }
 
         #[ink(message)]
+        // Genera un reporte de los votantes registrados en una elección
         pub fn generar_reporte_registro_votantes(
             &self,
             id: u64,
@@ -56,19 +58,22 @@ mod reporte {
             let fecha_inicio = self.sistema_votacion.get_fecha_inicio(id)?;
             let fecha_actual = self.env().block_timestamp();
 
+            //verifica que la elección ya haya cerrado
             if fecha_actual < fecha_cierre {
                 return Err(Error::EleccionAbierta);
             }
-
+            //verifica que la elección ya haya iniciado
             if fecha_actual < fecha_inicio {
                 return Err(Error::EleccionNoActiva);
             }
 
+            //traigo la cantidad de votos emitidos desde el contrato sistema_votacion y la cantidad de votantes registrados
             let cantidad_votos_emitidos =
                 self.sistema_votacion.get_votantes_que_votaron(id)?.len() as u64;
 
             let cantidad_votantes = self.sistema_votacion.get_votantes(id)?.len() as u64;
 
+            //calculo el porcentaje de participación
             let mut porcentaje_participacion = cantidad_votos_emitidos
                 .checked_mul(100)
                 .ok_or(Error::Overflow)?;
@@ -87,6 +92,7 @@ mod reporte {
         }
 
         #[ink(message)]
+        // Genera un reporte de la participación en una elección
         pub fn generar_reporte_participacion(
             &self,
             id: u64,
@@ -99,13 +105,16 @@ mod reporte {
             let fecha_inicio = self.sistema_votacion.get_fecha_inicio(id)?;
             let fecha_actual = self.env().block_timestamp();
 
+            //verifica que la elección ya haya cerrado
             if fecha_actual < fecha_cierre {
                 return Err(Error::EleccionAbierta);
             }
+            //verifica que la elección ya haya iniciado
             if fecha_actual < fecha_inicio {
                 return Err(Error::EleccionNoActiva);
             }
 
+            //traigo los resultados de la elección desde el contrato sistema_votacion y los ordeno
             let resultados_desordenados = self.sistema_votacion.get_candidatos(id)?;
             let mut resultados_ordenados = resultados_desordenados.into_iter().collect::<Vec<_>>();
             resultados_ordenados.sort_by(|a, b| b.1.cmp(&a.1));
@@ -119,6 +128,7 @@ mod reporte {
         }
 
         #[ink(message)]
+        // Genera un reporte de los resultados de una elección
         pub fn generar_reporte_resultado(&self, id: u64) -> Result<ReporteResultado, Error> {
             self.generar_reporte_resultado_priv(id)
         }

@@ -74,11 +74,16 @@ mod sistema_votacion {
             fecha_ini: Fecha,
             fecha_f: Fecha,
         ) -> Result<(), Error> {
+            // verifico que el que llama sea el admin
             if self.admin.id != caller {
                 return Err(Error::PermisoDenegado);
             }
+
+            //conviertio las fechas en formato DD/MM/AAAA a timestamp
             let fecha_inicio = fecha_ini.to_timestamp()?;
             let fecha_fin = fecha_f.to_timestamp()?;
+
+            //creo la eleccion y la agrego al vector de elecciones
             let eleccion = Eleccion {
                 id: self.elecciones.len() as u64,
                 cargo,
@@ -114,9 +119,11 @@ mod sistema_votacion {
             password: String,
             nuevo_admin: AccountId,
         ) -> Result<(), Error> {
+            //verifico que el que llama sea el admin
             if caller != self.admin.id {
                 return Err(Error::PermisoDenegado);
             }
+            //creo el nuevo admin y lo setteo
             self.admin = Admin {
                 id: nuevo_admin,
                 nombre,
@@ -126,6 +133,7 @@ mod sistema_votacion {
             Ok(())
         }
 
+        /// Funcion para verificar si una eleccion esta activa, es decir si la fecha actual esta entre la fecha de inicio y fin de la eleccion
         fn eleccion_activa(&self, id: u64) -> Result<bool, Error> {
             let fecha_actual = self.env().block_timestamp();
 
@@ -139,6 +147,7 @@ mod sistema_votacion {
             Ok(fecha_actual >= fecha_inicio && fecha_actual <= fecha_fin)
         }
 
+        /// Funcion para verificar si una eleccion esta cerrada, es decir si la fecha actual es mayor a la fecha de fin de la eleccion
         fn eleccion_cerrada(&self, id: u64) -> Result<bool, Error> {
             let fecha_actual = self.env().block_timestamp();
             if id as usize >= self.elecciones.len() {
@@ -150,6 +159,7 @@ mod sistema_votacion {
             Ok(fecha_actual > fecha_fin)
         }
 
+        /// Funcion para verificar si una eleccion no esta abierta, es decir si la fecha actual es mayor a la fecha de inicio de la eleccion
         fn eleccion_no_abierta(&self, id: u64) -> Result<bool, Error> {
             let fecha_actual = self.env().block_timestamp();
             if id as usize >= self.elecciones.len() {
@@ -181,6 +191,7 @@ mod sistema_votacion {
         #[ink(message)]
         ///Funcion para mostrar a los usuarios los candidatos de una eleccion
         pub fn mostrar_candidatos(&self, id_eleccion: u64) -> Result<Vec<Usuario>, Error> {
+            // Verificar que la elección exista
             if id_eleccion as usize >= self.elecciones.len() {
                 return Err(Error::EleccionNoExiste);
             }
@@ -216,6 +227,7 @@ mod sistema_votacion {
                 email,
                 rol,
             };
+            // verifico que el usuario no este registrado y que no se registre el admin como usuario normal
             if self.usuarios.iter().any(|u| u.id == usuario.id) || usuario.id == self.admin.id {
                 if usuario.id == self.admin.id {
                     return Err(Error::AdminNoPuedeRegistrarse);
@@ -223,6 +235,7 @@ mod sistema_votacion {
                     return Err(Error::UsuarioYaRegistrado);
                 }
             }
+            //agrego el usuario al vector de usuarios
             self.usuarios.push(usuario);
             Ok(())
         }
@@ -237,6 +250,7 @@ mod sistema_votacion {
             caller: AccountId,
             id_eleccion: u64,
         ) -> Result<(), Error> {
+            // Verificar que la elección no esté abierta
             if !self.eleccion_no_abierta(id_eleccion)? {
                 return Err(Error::EleccionAbierta);
             }
@@ -280,6 +294,7 @@ mod sistema_votacion {
             caller: AccountId,
             id_eleccion: u64,
         ) -> Result<(), Error> {
+            // Verificar que la elección no esté abierta
             if !self.eleccion_no_abierta(id_eleccion)? {
                 return Err(Error::EleccionAbierta);
             }
@@ -297,7 +312,7 @@ mod sistema_votacion {
                 return Err(Error::UsuarioYaRegistrado);
             }
 
-            // Verificar que el usuario actual sea un candidato
+            // Verificar que el usuario actual sea un candidato, si lo es, agregarlo a la lista de candidatos públicos de la elección
             let mut usuario_es_candidato = false;
             for usuario in self.usuarios.iter() {
                 if usuario.id == caller && usuario.rol == RolUsuario::Candidato {
@@ -335,16 +350,19 @@ mod sistema_votacion {
             id_eleccion: u64,
             id_candidato: AccountId,
         ) -> Result<(), Error> {
+            // Verificar que la elección esté activa
             if !self.eleccion_activa(id_eleccion)? {
                 return Err(Error::EleccionNoActiva);
             }
 
+            //buscar al votante en el vector de usuarios y verificar que sea un votante
             let votante = self.usuarios.iter().find(|&u| u.id == caller).cloned();
             let votante = match votante {
                 Some(u) if u.rol == RolUsuario::Votante => u,
                 _ => return Err(Error::UsuarioNoVotante),
             };
 
+            // si es un votante, votar en la eleccion
             self.elecciones[id_eleccion as usize].votar_en_eleccion(id_candidato, votante)?;
 
             Ok(())
@@ -524,7 +542,9 @@ mod sistema_votacion {
             votante: Usuario,
         ) -> Result<(), Error> {
             // Incrementar el conteo de votos del candidato
+            // Verificar que el candidato exista
             if let Some(votos) = self.candidatos.get_mut(&id_candidato) {
+                // Verificar que el votante no haya votado ya
                 if self.votantes_que_votaron.contains(&votante) {
                     return Err(Error::UsuarioYaRegistrado);
                 }
@@ -532,6 +552,7 @@ mod sistema_votacion {
                 // Intentar incrementar el conteo de votos, manejando el posible overflow
                 *votos = votos.checked_add(1).ok_or(Error::Overflow)?;
 
+                // Agregar al votante a la lista de votantes que votaron
                 self.votantes_que_votaron.push(votante);
             } else {
                 return Err(Error::CandidatoNoExiste);
@@ -574,10 +595,10 @@ mod sistema_votacion {
         cargo: String,
         fecha_inicio: u64,
         fecha_fin: u64,
-        candidatos: BTreeMap<AccountId, u64>,
-        candidatos_publicos: Vec<Usuario>,
-        votantes: Vec<Usuario>,
-        votantes_que_votaron: Vec<Usuario>,
+        candidatos: BTreeMap<AccountId, u64>, // btree para contar los votos de los candidatos eficientemente
+        candidatos_publicos: Vec<Usuario>, // vector para mostrar los candidatos de una eleccion a los usuarios
+        votantes: Vec<Usuario>,            // vector de votantes registrados en la eleccion
+        votantes_que_votaron: Vec<Usuario>, // vector de votantes que votaron en la eleccion
     }
 
     //----------------------Structs de usuarios---------------------------------------------------------
