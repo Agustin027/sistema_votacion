@@ -69,12 +69,11 @@ mod reporte {
 
             let cantidad_votantes = self.sistema_votacion.get_votantes(id)?.len() as u64;
 
-            //despues manejar el error bien y no unwrap
-            let porcentaje_participacion = cantidad_votos_emitidos
+            let mut porcentaje_participacion = cantidad_votos_emitidos
                 .checked_mul(100)
                 .ok_or(Error::Overflow)?;
 
-            porcentaje_participacion
+            porcentaje_participacion = porcentaje_participacion
                 .checked_div(cantidad_votantes)
                 .ok_or(Error::Overflow)?;
 
@@ -152,6 +151,6 @@ mod reporte {
 
     #[cfg(test)]
     mod tests {
-        // ???
+        // no supe como simular la data que recibo del contrato sistema_votacion y no pude hacer los test
     }
 }
