@@ -9,6 +9,7 @@ pub use self::sistema_votacion::SistemaVotacionRef;
 pub use self::sistema_votacion::Usuario;
 #[ink::contract]
 mod sistema_votacion {
+
     use chrono::NaiveDate;
     use ink::prelude::collections::BTreeMap;
     use ink::prelude::string::String;
@@ -84,6 +85,7 @@ mod sistema_votacion {
                 fecha_inicio,
                 fecha_fin,
                 candidatos: BTreeMap::new(),
+                candidatos_publicos: Vec::new(),
                 votantes: Vec::new(),
                 votantes_que_votaron: Vec::new(),
             };
@@ -174,6 +176,17 @@ mod sistema_votacion {
             self.elecciones[id as usize].fecha_inicio = fecha_ini.to_timestamp()?;
             self.elecciones[id as usize].fecha_fin = fecha_f.to_timestamp()?;
             Ok(())
+        }
+
+        #[ink(message)]
+        ///Funcion para mostrar a los usuarios los candidatos de una eleccion
+        pub fn mostrar_candidatos(&self, id_eleccion: u64) -> Result<Vec<Usuario>, Error> {
+            if id_eleccion as usize >= self.elecciones.len() {
+                return Err(Error::EleccionNoExiste);
+            }
+            Ok(self.elecciones[id_eleccion as usize]
+                .candidatos_publicos
+                .clone())
         }
 
         //----------------------Funciones de registro---------------------------------------------------------
@@ -276,11 +289,23 @@ mod sistema_votacion {
                 return Err(Error::EleccionNoExiste);
             }
 
+            // Verificar que el usuario no esté registrado como candidato en la elección
+            if self.elecciones[id_eleccion as usize]
+                .candidatos
+                .contains_key(&caller)
+            {
+                return Err(Error::UsuarioYaRegistrado);
+            }
+
             // Verificar que el usuario actual sea un candidato
             let mut usuario_es_candidato = false;
             for usuario in self.usuarios.iter() {
                 if usuario.id == caller && usuario.rol == RolUsuario::Candidato {
                     usuario_es_candidato = true;
+
+                    self.elecciones[id_eleccion as usize]
+                        .candidatos_publicos
+                        .push(usuario.clone());
                     break;
                 }
             }
@@ -288,14 +313,6 @@ mod sistema_votacion {
             // Si el usuario no es un candidato, lanzar un error
             if !usuario_es_candidato {
                 return Err(Error::UsuarioNoCandidato);
-            }
-
-            // Verificar que el usuario no esté registrado como candidato en la elección
-            if self.elecciones[id_eleccion as usize]
-                .candidatos
-                .contains_key(&caller)
-            {
-                return Err(Error::UsuarioYaRegistrado);
             }
 
             // Registrar al usuario como candidato en la elección
@@ -558,6 +575,7 @@ mod sistema_votacion {
         fecha_inicio: u64,
         fecha_fin: u64,
         candidatos: BTreeMap<AccountId, u64>,
+        candidatos_publicos: Vec<Usuario>,
         votantes: Vec<Usuario>,
         votantes_que_votaron: Vec<Usuario>,
     }
